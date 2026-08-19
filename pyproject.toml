@@ -1,0 +1,55 @@
+[project]
+name = "yomiage"
+version = "0.1.0"
+description = "Discord text-to-speech bot powered by VOICEVOX CORE"
+readme = "README.md"
+license = "MIT"
+requires-python = ">=3.12,<3.14"
+dependencies = [
+    "discord.py[voice]",
+    "python-dotenv>=1.2.1",
+    "voicevox-core @ https://github.com/VOICEVOX/voicevox_core/releases/download/0.16.3/voicevox_core-0.16.3-cp310-abi3-manylinux_2_34_x86_64.whl",
+]
+
+[project.urls]
+Repository = "https://github.com/sudatti624/VoiceBot.py"
+
+[dependency-groups]
+dev = [
+    "basedpyright>=1.39.9",
+    "ruff>=0.16.2",
+]
+
+[tool.ruff]
+target-version = "py312"
+line-length = 100
+
+[tool.ruff.lint]
+select = ["ALL"]
+ignore = [
+    "C901",
+    "CPY",
+    "D",
+    "EM101",
+    "EM102",
+    "FBT",
+    "PLR0915",
+    "RUF001",
+    "TC",
+    "TRY003",
+]
+
+fixable = ["ALL"]
+unfixable = ["B"]
+
+[tool.basedpyright]
+pythonVersion = "3.12"
+typeCheckingMode = "standard"
+extraPaths = ["src"]
+
+[project.scripts]
+yomiage = "yomiage:main"
+
+[build-system]
+requires = ["uv_build>=0.12.5,<0.13.0"]
+build-backend = "uv_build"
