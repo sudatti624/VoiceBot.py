@@ -3,11 +3,10 @@ from __future__ import annotations
 import asyncio
 import logging
 import re
-import tempfile
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
-from pathlib import Path
-from typing import TYPE_CHECKING, cast
+from io import BytesIO
+from typing import cast
 
 import discord
 from discord import app_commands
@@ -16,9 +15,6 @@ from yomiage.config import Settings
 from yomiage.database import Database
 from yomiage.translator import Translator
 from yomiage.voicevox import VoicevoxSynthesizer
-
-if TYPE_CHECKING:
-    from collections.abc import Callable
 
 LOGGER = logging.getLogger(__name__)
 REFILL_RATE = 50
@@ -46,7 +42,6 @@ class GuildSession:
     last_token_refill: datetime = field(default_factory=lambda: datetime.now(UTC))
     queue: asyncio.Queue[SpeechItem] = field(default_factory=asyncio.Queue)
     worker: asyncio.Task[None] | None = None
-    current_file: Path | None = None
 
 
 class YomiageBot(discord.Client):
@@ -568,46 +563,31 @@ class YomiageBot(discord.Client):
                     converted,
                     item.speaker_id,
                 )
-                path = self._write_temp_wav(wav_data)
-                session.current_file = path
-                await self._play_file(
-                    voice_client,
-                    path,
-                    lambda temp_path=path: self._cleanup_file(temp_path),
-                )
+                await self._play_wav_data(voice_client, wav_data)
             except Exception:
                 LOGGER.exception("Failed to play TTS for guild=%s", guild.id)
             finally:
                 session.queue.task_done()
 
-    def _write_temp_wav(self, wav_data: bytes) -> Path:
-        with tempfile.NamedTemporaryFile(delete=False, suffix=".wav") as temp_file:
-            temp_file.write(wav_data)
-            return Path(temp_file.name)
-
-    async def _play_file(
+    async def _play_wav_data(
         self,
         voice_client: discord.VoiceClient,
-        path: Path,
-        after: Callable[[], None],
+        wav_data: bytes,
     ) -> None:
         finished = asyncio.Event()
 
         def on_finished(error: Exception | None) -> None:
             if error is not None:
                 LOGGER.warning("Discord playback failed: %s", error)
-            after()
             self.loop.call_soon_threadsafe(finished.set)
 
-        source = discord.FFmpegPCMAudio(str(path), executable=self.settings.ffmpeg_path)
+        source = discord.FFmpegPCMAudio(
+            source=BytesIO(wav_data),
+            executable=self.settings.ffmpeg_path,
+            pipe=True,
+        )
         voice_client.play(source, after=on_finished)
         await finished.wait()
-
-    def _cleanup_file(self, path: Path) -> None:
-        try:
-            path.unlink(missing_ok=True)
-        except OSError:
-            LOGGER.warning("Failed to remove temporary audio file: %s", path)
 
 
 def make_bot(settings: Settings) -> YomiageBot:
