@@ -63,7 +63,7 @@ cp .env.example .env
 DISCORD_BOT_TOKEN=あなたのDiscord Botトークン
 VOICEVOX_ONNXRUNTIME_PATH=./voicevox_core/onnxruntime/lib/libvoicevox_onnxruntime.so.1.17.3
 OPEN_JTALK_DIC_DIR=./voicevox_core/dict/open_jtalk_dic_utf_8-1.11
-VOICEVOX_MODEL_PATH=./voicevox_core/models/0.vvm
+VOICEVOX_MODEL_PATH=./voicevox_core/models/vvms/0.vvm
 ```
 
 4. Botを起動します。
@@ -82,7 +82,7 @@ uv run yomiage
 voicevox_core/
 ├── onnxruntime/lib/libvoicevox_onnxruntime.so.1.17.3
 ├── dict/open_jtalk_dic_utf_8-1.11/
-└── models/0.vvm
+└── models/vvms/0.vvm
 ```
 
 配置場所を変える場合は、`.env` の `VOICEVOX_ONNXRUNTIME_PATH`、
