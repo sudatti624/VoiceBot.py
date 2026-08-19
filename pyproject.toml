@@ -45,6 +45,8 @@ unfixable = ["B"]
 [tool.basedpyright]
 pythonVersion = "3.12"
 typeCheckingMode = "standard"
+venvPath = "."
+venv = ".venv"
 extraPaths = ["src"]
 
 [project.scripts]

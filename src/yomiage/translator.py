@@ -8,6 +8,7 @@ EN_PATTERN = re.compile(r"[a-z]+|[A-Z]{3,}|[A-Z][a-z]+")
 ROMAJI_PATTERN = re.compile(r"[a-zA-Z]")
 UNICODE_FILTER = re.compile(r"[\U00010000-\U0010ffff]")
 MAX_SPEAK_TEXT_LENGTH = 80
+MAX_SOURCE_TEXT_LENGTH = 512
 
 KANA_TABLE: tuple[tuple[str, str], ...] = (
     ("kya", "きゃ"),
@@ -122,7 +123,7 @@ class Translator:
         self.database = database
 
     def convert(self, source_text: str, server_id: int, bot_id: int) -> str:
-        speak_text = self._full_to_half(source_text)
+        speak_text = self._full_to_half(source_text[:MAX_SOURCE_TEXT_LENGTH])
         speak_text = self._apply_dict(speak_text, self.database.get_global_dict())
         speak_text = self._apply_dict(speak_text, self.database.get_server_dict(server_id, bot_id))
 

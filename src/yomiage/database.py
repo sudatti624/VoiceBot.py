@@ -6,6 +6,7 @@ from pathlib import Path
 
 DictEntry = tuple[str, str, bool]
 MentionReadMode = str
+SqliteCursor = sqlite3.Cursor
 
 
 class GuildSettings:
@@ -94,6 +95,12 @@ class Database:
             [(word, reading, int(regex)) for word, reading, regex in entries],
         )
 
+    def _finish_write(self, cursor: SqliteCursor) -> None:
+        if cursor.rowcount > 0:
+            self._connection.commit()
+        elif self._connection.in_transaction:
+            self._connection.rollback()
+
     def get_en_dict(self) -> list[tuple[str, str]]:
         rows = self._connection.execute("SELECT word, reading FROM en_dict").fetchall()
         return [(row["word"], row["reading"]) for row in rows]
@@ -122,23 +129,24 @@ class Database:
         reading: str,
         regex: bool,
     ) -> None:
-        self._connection.execute(
+        cursor = self._connection.execute(
             """
             INSERT INTO server_dict (server_id, bot_id, word, reading, regex)
             VALUES (?, ?, ?, ?, ?)
             ON CONFLICT(server_id, bot_id, word)
             DO UPDATE SET reading = excluded.reading, regex = excluded.regex
+            WHERE reading IS NOT excluded.reading OR regex IS NOT excluded.regex
             """,
             (server_id, bot_id, word, reading, int(regex)),
         )
-        self._connection.commit()
+        self._finish_write(cursor)
 
     def delete_server_dict_entry(self, server_id: int, bot_id: int, word: str) -> None:
-        self._connection.execute(
+        cursor = self._connection.execute(
             "DELETE FROM server_dict WHERE server_id = ? AND bot_id = ? AND word = ?",
             (server_id, bot_id, word),
         )
-        self._connection.commit()
+        self._finish_write(cursor)
 
     def get_guild_settings(
         self,
@@ -146,7 +154,6 @@ class Database:
         bot_id: int,
         fallback_speaker_id: int,
     ) -> GuildSettings:
-        self._ensure_guild_settings(server_id, bot_id, fallback_speaker_id)
         row = self._connection.execute(
             """
             SELECT mention_read_mode, read_author_name, default_speaker_id
@@ -168,40 +175,43 @@ class Database:
         )
 
     def set_mention_read_mode(self, server_id: int, bot_id: int, mode: MentionReadMode) -> None:
-        self._ensure_guild_settings(server_id, bot_id)
-        self._connection.execute(
+        cursor = self._connection.execute(
             """
-            UPDATE guild_settings
-            SET mention_read_mode = ?
-            WHERE server_id = ? AND bot_id = ?
+            INSERT INTO guild_settings (server_id, bot_id, mention_read_mode)
+            VALUES (?, ?, ?)
+            ON CONFLICT(server_id, bot_id)
+            DO UPDATE SET mention_read_mode = excluded.mention_read_mode
+            WHERE mention_read_mode IS NOT excluded.mention_read_mode
             """,
-            (mode, server_id, bot_id),
+            (server_id, bot_id, mode),
         )
-        self._connection.commit()
+        self._finish_write(cursor)
 
     def set_read_author_name(self, server_id: int, bot_id: int, enabled: bool) -> None:
-        self._ensure_guild_settings(server_id, bot_id)
-        self._connection.execute(
+        cursor = self._connection.execute(
             """
-            UPDATE guild_settings
-            SET read_author_name = ?
-            WHERE server_id = ? AND bot_id = ?
+            INSERT INTO guild_settings (server_id, bot_id, read_author_name)
+            VALUES (?, ?, ?)
+            ON CONFLICT(server_id, bot_id)
+            DO UPDATE SET read_author_name = excluded.read_author_name
+            WHERE read_author_name IS NOT excluded.read_author_name
             """,
-            (int(enabled), server_id, bot_id),
+            (server_id, bot_id, int(enabled)),
         )
-        self._connection.commit()
+        self._finish_write(cursor)
 
     def set_default_speaker_id(self, server_id: int, bot_id: int, speaker_id: int) -> None:
-        self._ensure_guild_settings(server_id, bot_id, speaker_id)
-        self._connection.execute(
+        cursor = self._connection.execute(
             """
-            UPDATE guild_settings
-            SET default_speaker_id = ?
-            WHERE server_id = ? AND bot_id = ?
+            INSERT INTO guild_settings (server_id, bot_id, default_speaker_id)
+            VALUES (?, ?, ?)
+            ON CONFLICT(server_id, bot_id)
+            DO UPDATE SET default_speaker_id = excluded.default_speaker_id
+            WHERE default_speaker_id IS NOT excluded.default_speaker_id
             """,
-            (speaker_id, server_id, bot_id),
+            (server_id, bot_id, speaker_id),
         )
-        self._connection.commit()
+        self._finish_write(cursor)
 
     def get_user_speaker_id(self, server_id: int, bot_id: int, user_id: int) -> int | None:
         row = self._connection.execute(
@@ -221,44 +231,24 @@ class Database:
         user_id: int,
         speaker_id: int,
     ) -> None:
-        self._connection.execute(
+        cursor = self._connection.execute(
             """
             INSERT INTO user_speakers (server_id, bot_id, user_id, speaker_id)
             VALUES (?, ?, ?, ?)
             ON CONFLICT(server_id, bot_id, user_id)
             DO UPDATE SET speaker_id = excluded.speaker_id
+            WHERE speaker_id IS NOT excluded.speaker_id
             """,
             (server_id, bot_id, user_id, speaker_id),
         )
-        self._connection.commit()
+        self._finish_write(cursor)
 
     def delete_user_speaker_id(self, server_id: int, bot_id: int, user_id: int) -> None:
-        self._connection.execute(
+        cursor = self._connection.execute(
             """
             DELETE FROM user_speakers
             WHERE server_id = ? AND bot_id = ? AND user_id = ?
             """,
             (server_id, bot_id, user_id),
         )
-        self._connection.commit()
-
-    def _ensure_guild_settings(
-        self,
-        server_id: int,
-        bot_id: int,
-        default_speaker_id: int = 3,
-    ) -> None:
-        self._connection.execute(
-            """
-            INSERT OR IGNORE INTO guild_settings (
-                server_id,
-                bot_id,
-                mention_read_mode,
-                read_author_name,
-                default_speaker_id
-            )
-            VALUES (?, ?, 'name', 1, ?)
-            """,
-            (server_id, bot_id, default_speaker_id),
-        )
-        self._connection.commit()
+        self._finish_write(cursor)

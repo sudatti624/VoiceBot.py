@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import logging
 import re
 from dataclasses import dataclass, field
@@ -21,11 +22,15 @@ REFILL_RATE = 50
 REFILL_INTERVAL_SECONDS = 10
 MAX_MESSAGE_LENGTH = 80
 MAX_DICT_ENTRIES = 27
+MAX_DICT_WORD_LENGTH = 120
+MAX_DICT_READING_LENGTH = 80
+MAX_QUEUE_SIZE = 50
 SKIP_SHORTCUTS = frozenset({"s", "S", "!s", "!S", "！s", "！S"})
 MENTION_PATTERN = re.compile(r"<(@!?|@&|#)(\d+)>")
 DISCORD_CHANNEL_URL_PATTERN = re.compile(
     r"https?://(?:canary\.|ptb\.)?discord(?:app)?\.com/channels/(\d+|@me)/(\d+)(?:/\d+)?",
 )
+NESTED_QUANTIFIER_PATTERN = re.compile(r"\((?:[^()\\]|\\.)*[*+](?:[^()\\]|\\.)*\)[*+{]")
 
 
 @dataclass(frozen=True)
@@ -40,7 +45,9 @@ class GuildSession:
     text_channel_id: int
     tokens: int
     last_token_refill: datetime = field(default_factory=lambda: datetime.now(UTC))
-    queue: asyncio.Queue[SpeechItem] = field(default_factory=asyncio.Queue)
+    queue: asyncio.Queue[SpeechItem] = field(
+        default_factory=lambda: asyncio.Queue(maxsize=MAX_QUEUE_SIZE),
+    )
     worker: asyncio.Task[None] | None = None
 
 
@@ -97,7 +104,11 @@ class YomiageBot(discord.Client):
 
         text = self._prepare_message_text(message)
         speaker_id = self._speaker_id_for(message)
-        await session.queue.put(SpeechItem(text=text, speaker_id=speaker_id))
+        try:
+            session.queue.put_nowait(SpeechItem(text=text, speaker_id=speaker_id))
+        except asyncio.QueueFull:
+            await message.reply("読み上げ待ちが多すぎるため、この投稿はスキップしました")
+            return
         self._ensure_worker(message.guild, session)
 
     async def on_voice_state_update(
@@ -145,12 +156,11 @@ class YomiageBot(discord.Client):
                 return
 
             voice_client = interaction.guild.voice_client
-            if voice_client is None:
+            if not isinstance(voice_client, discord.VoiceClient):
                 await interaction.response.send_message("ボイスチャンネルに接続していません")
                 return
 
-            await voice_client.disconnect(force=False)
-            self.sessions.pop(interaction.guild.id, None)
+            await self._disconnect_guild(interaction.guild, voice_client)
             await interaction.response.send_message("ボイスチャンネルから切断しました")
 
         @self.tree.command(name="skip", description="現在の読み上げをスキップします")
@@ -190,6 +200,10 @@ class YomiageBot(discord.Client):
                 await interaction.response.send_message(
                     "サーバー辞書には最大27個の単語を登録できます",
                 )
+                return
+            error_message = self._validate_dict_entry(word, reading, regex)
+            if error_message is not None:
+                await interaction.response.send_message(error_message)
                 return
 
             self.database.insert_server_dict_entry(
@@ -376,6 +390,12 @@ class YomiageBot(discord.Client):
 
         self.tree.add_command(settings_group)
 
+    async def close(self) -> None:
+        for guild_id in tuple(self.sessions):
+            self._drop_session(guild_id)
+        self.database.close()
+        await super().close()
+
     def _is_bot_mentioned(self, message: discord.Message) -> bool:
         return self.user is not None and self.user in message.mentions
 
@@ -433,9 +453,30 @@ class YomiageBot(discord.Client):
         if non_bot_members:
             return
 
-        await voice_client.disconnect(force=False)
-        self.sessions.pop(guild.id, None)
+        await self._disconnect_guild(guild, voice_client)
         LOGGER.info("Disconnected from guild=%s because the voice channel is empty", guild.id)
+
+    async def _disconnect_guild(
+        self,
+        guild: discord.Guild,
+        voice_client: discord.VoiceClient,
+    ) -> None:
+        self._drop_session(guild.id)
+        await voice_client.disconnect(force=False)
+
+    def _drop_session(self, guild_id: int) -> None:
+        session = self.sessions.pop(guild_id, None)
+        if session is None:
+            return
+
+        while not session.queue.empty():
+            with contextlib.suppress(asyncio.QueueEmpty):
+                session.queue.get_nowait()
+                session.queue.task_done()
+
+        worker = session.worker
+        if worker is not None and not worker.done() and worker is not asyncio.current_task():
+            worker.cancel()
 
     def _skip_guild(self, guild: discord.Guild) -> bool:
         voice_client = guild.voice_client
@@ -514,6 +555,24 @@ class YomiageBot(discord.Client):
         channel = guild.get_channel_or_thread(channel_id)
         return channel.name if channel is not None else "チャンネル"
 
+    def _validate_dict_entry(self, word: str, reading: str, regex: bool) -> str | None:
+        error_message = None
+        if not word.strip() or not reading.strip():
+            error_message = "単語と読みは空にできません"
+        elif len(word) > MAX_DICT_WORD_LENGTH:
+            error_message = f"単語は{MAX_DICT_WORD_LENGTH}文字以内にしてください"
+        elif len(reading) > MAX_DICT_READING_LENGTH:
+            error_message = f"読みは{MAX_DICT_READING_LENGTH}文字以内にしてください"
+        elif regex:
+            try:
+                re.compile(word)
+            except re.error as exc:
+                error_message = f"正規表現として解釈できません: {exc}"
+            else:
+                if NESTED_QUANTIFIER_PATTERN.search(word):
+                    error_message = "処理が極端に重くなる可能性がある正規表現は登録できません"
+        return error_message
+
     def _consume_token(self, guild_id: int, message: str) -> bool:
         session = self.sessions.get(guild_id)
         if session is None:
@@ -586,8 +645,12 @@ class YomiageBot(discord.Client):
             executable=self.settings.ffmpeg_path,
             pipe=True,
         )
-        voice_client.play(source, after=on_finished)
-        await finished.wait()
+        try:
+            voice_client.play(source, after=on_finished)
+            await finished.wait()
+        except Exception:
+            source.cleanup()
+            raise
 
 
 def make_bot(settings: Settings) -> YomiageBot:
