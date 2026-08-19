@@ -14,6 +14,7 @@ VOICEVOX COREでDiscordのテキストチャンネル投稿をボイスチャン
 - `/dict add|remove|list`: サーバー辞書の管理
 - `/settings show|mention|read_name|default_speaker|user_speaker|clear_user_speaker`: 読み上げ設定
 - 参加時のテキストチャンネルに投稿されたメッセージをVOICEVOX COREで読み上げ
+- VC接続時にBot自身をSelf Deafにして、他ユーザーの音声を受信しない
 - 接続中のVCから人が全員退出したら自動退出
 - Rust版と同じ考え方のトークンバケット式レート制限
 - SQLiteによるローカル辞書保存
@@ -22,8 +23,14 @@ VOICEVOX COREでDiscordのテキストチャンネル投稿をボイスチャン
 - 投稿者名の読み上げ
 - ユーザーごとのVOICEVOX話者ID設定
 
+## 対応OS
+
+**Linux専用です。** 依存する `voicevox_core` はmanylinuxホイールのみを配布しており、Windows/macOSでは
+`uv sync` の時点でインストールに失敗します。CIも `ubuntu-latest` 上でのみ実行しています。
+
 ## 必要なもの
 
+- Linux
 - Python 3.12
 - uv
 - ffmpeg
@@ -96,31 +103,61 @@ voicevox_core/
 - `/skip`: 現在の読み上げを停止
 - `/s`: `/skip` の短縮版
 - `s`, `S`, `!s`, `!S`, `！s`, `！S`: テキスト投稿で読み上げを停止
-- `/dict add`: サーバー辞書へ単語を追加
-- `/dict remove`: サーバー辞書から単語を削除
-- `/dict list`: サーバー辞書を表示
+- `/dict add`: サーバー辞書へ単語を追加 (要 `サーバー管理` 権限)
+- `/dict remove`: サーバー辞書から単語を削除 (要 `サーバー管理` 権限)
+- `/dict list`: サーバー辞書を表示 (誰でも実行可能)
 
 ## 読み上げ設定
 
-- `/settings show`: 現在の設定を表示
-- `/settings mention mode:名前/チャンネル名`: メンションやDiscordチャンネルURLを名前で読む
-- `/settings mention mode:リンク省略`: メンションやDiscordチャンネルURLを `りんくしょうりゃく` と読む
-- `/settings read_name enabled:true`: 読み上げ前に投稿者名を読む
-- `/settings read_name enabled:false`: 投稿者名を読まない
-- `/settings default_speaker speaker_id:<ID>`: サーバーのデフォルト話者IDを変更
-- `/settings user_speaker user:<ユーザー> speaker_id:<ID>`: ユーザーごとの話者IDを設定
-- `/settings clear_user_speaker user:<ユーザー>`: ユーザーごとの話者IDを解除
+- `/settings show`: 現在の設定を表示 (誰でも実行可能)
+- `/settings mention mode:名前/チャンネル名`: メンションやDiscordチャンネルURLを名前で読む (要 `サーバー管理` 権限)
+- `/settings mention mode:リンク省略`: メンションやDiscordチャンネルURLを `りんくしょうりゃく` と読む (要 `サーバー管理` 権限)
+- `/settings read_name enabled:true`: 読み上げ前に投稿者名を読む (要 `サーバー管理` 権限)
+- `/settings read_name enabled:false`: 投稿者名を読まない (要 `サーバー管理` 権限)
+- `/settings default_speaker speaker_id:<ID>`: サーバーのデフォルト話者IDを変更 (要 `サーバー管理` 権限)
+- `/settings user_speaker user:<ユーザー> speaker_id:<ID>`: ユーザーごとの話者IDを設定 (自分自身への設定は誰でも可、他人への設定は要 `サーバー管理` 権限)
+- `/settings clear_user_speaker user:<ユーザー>`: ユーザーごとの話者IDを解除 (自分自身の解除は誰でも可、他人の解除は要 `サーバー管理` 権限)
+
+### 権限が必要なコマンド一覧
+
+以下のコマンドはDiscordの `サーバー管理` (Manage Server) 権限を持つメンバーのみ実行できます。
+権限がない場合は「権限がありません」といった案内が返されます。
+
+- `/dict add`, `/dict remove`
+- `/settings mention`, `/settings read_name`, `/settings default_speaker`
+- `/settings user_speaker`, `/settings clear_user_speaker` (自分自身を対象にする場合を除く)
 
 ## 開発用コマンド
 
 ```bash
 uv run ruff check .
 uv run basedpyright src
+uv run pytest
 uv build
 ```
 
 `uv build` の成果物は `dist/` に出力されます。`dist/`、`.venv/`、`.env`、SQLite DB、
 VOICEVOX CORE本体はGit管理対象外です。
+
+### テスト
+
+`tests/` 配下に、Discord接続やVOICEVOX COREの実モデルなしで実行できる単体テストを用意しています。
+
+- `test_rate_limit.py`: トークンバケットのレート制限ロジック
+- `test_translator.py`: 辞書適用・正規表現・英単語/ローマ字変換・文字数省略などのテキスト変換
+- `test_config.py`: 環境変数の検証ロジック
+- `test_database.py`: SQLiteへの読み書きとキャッシュの整合性
+- `test_session.py`: ボイスセッションの生成・再接続時の後始末・終了処理
+- `test_bot_voice.py`: VC接続時のSelf Deaf設定
+
+```bash
+uv run pytest
+```
+
+### CI
+
+`.github/workflows/ci.yml` で、push・PR時に `uv sync` → `ruff check` → `basedpyright` →
+`pytest` → `uv build` を `ubuntu-latest` 上で実行しています。
 
 ## 環境変数
 
