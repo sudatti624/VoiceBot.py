@@ -21,6 +21,7 @@ MENTION_PATTERN = re.compile(r"<(@!?|@&|#)(\d+)>")
 DISCORD_CHANNEL_URL_PATTERN = re.compile(
     r"https?://(?:canary\.|ptb\.)?discord(?:app)?\.com/channels/(\d+|@me)/(\d+)(?:/\d+)?",
 )
+SERVER_CHAT_PREFIX_PATTERN = re.compile(r"^\[[^\]]+\]<[^>]+>\s*")
 
 
 class YomiageBot(discord.Client):
@@ -60,7 +61,7 @@ class YomiageBot(discord.Client):
         await self.session_manager.close(guild.id)
 
     async def on_message(self, message: discord.Message) -> None:
-        if message.author.bot or not message.guild:
+        if self._is_own_message(message) or not message.guild:
             return
         if not message.content and not message.attachments:
             return
@@ -136,6 +137,9 @@ class YomiageBot(discord.Client):
 
     def _is_bot_mentioned(self, message: discord.Message) -> bool:
         return self.user is not None and self.user in message.mentions
+
+    def _is_own_message(self, message: discord.Message) -> bool:
+        return self.user is not None and message.author.id == self.user.id
 
     async def _join_from_message(self, message: discord.Message) -> None:
         if message.guild is None or not isinstance(message.author, discord.Member):
@@ -246,9 +250,12 @@ class YomiageBot(discord.Client):
             self.settings.bot_id,
             self.settings.speaker_id,
         )
+        content = message.content
+        if guild_settings.server_chat_enabled:
+            content = SERVER_CHAT_PREFIX_PATTERN.sub("", content, count=1)
         content = self._replace_discord_references(
             message.guild,
-            message.content,
+            content,
             guild_settings.mention_read_mode,
         )
         if message.attachments:

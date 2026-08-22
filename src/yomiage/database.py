@@ -19,6 +19,7 @@ SqliteCursor = sqlite3.Cursor
 
 DEFAULT_MENTION_READ_MODE: MentionReadMode = "name"
 DEFAULT_READ_AUTHOR_NAME = True
+DEFAULT_SERVER_CHAT_ENABLED = False
 
 
 @dataclass(frozen=True)
@@ -26,6 +27,7 @@ class GuildSettings:
     mention_read_mode: MentionReadMode
     read_author_name: bool
     default_speaker_id: int
+    server_chat_enabled: bool
 
 
 DEFAULT_GLOBAL_DICT: tuple[DictEntry, ...] = (
@@ -82,6 +84,7 @@ class Database:
                 mention_read_mode TEXT NOT NULL,
                 read_author_name INTEGER NOT NULL,
                 default_speaker_id INTEGER NOT NULL,
+                server_chat_enabled INTEGER NOT NULL DEFAULT 0,
                 PRIMARY KEY (server_id, bot_id)
             );
 
@@ -94,10 +97,23 @@ class Database:
             );
             """,
         )
+        self._migrate_schema()
         row = self._connection.execute("SELECT COUNT(*) AS count FROM global_dict").fetchone()
         if row is not None and row["count"] == 0:
             self.insert_global_entries(DEFAULT_GLOBAL_DICT)
         self._connection.commit()
+
+    def _migrate_schema(self) -> None:
+        guild_settings_columns = {
+            row["name"] for row in self._connection.execute("PRAGMA table_info(guild_settings)")
+        }
+        if "server_chat_enabled" not in guild_settings_columns:
+            self._connection.execute(
+                """
+                ALTER TABLE guild_settings
+                ADD COLUMN server_chat_enabled INTEGER NOT NULL DEFAULT 0
+                """,
+            )
 
     def insert_global_entries(self, entries: Iterable[DictEntry]) -> None:
         self._connection.executemany(
@@ -202,7 +218,11 @@ class Database:
 
         row = self._connection.execute(
             """
-            SELECT mention_read_mode, read_author_name, default_speaker_id
+            SELECT
+                mention_read_mode,
+                read_author_name,
+                default_speaker_id,
+                server_chat_enabled
             FROM guild_settings
             WHERE server_id = ? AND bot_id = ?
             """,
@@ -213,12 +233,14 @@ class Database:
                 mention_read_mode=DEFAULT_MENTION_READ_MODE,
                 read_author_name=DEFAULT_READ_AUTHOR_NAME,
                 default_speaker_id=fallback_speaker_id,
+                server_chat_enabled=DEFAULT_SERVER_CHAT_ENABLED,
             )
         else:
             settings = GuildSettings(
                 mention_read_mode=row["mention_read_mode"],
                 read_author_name=bool(row["read_author_name"]),
                 default_speaker_id=row["default_speaker_id"],
+                server_chat_enabled=bool(row["server_chat_enabled"]),
             )
         self._guild_settings_cache[key] = settings
         return settings
@@ -238,8 +260,15 @@ class Database:
         self._connection.execute(
             """
             INSERT INTO guild_settings
-                (server_id, bot_id, mention_read_mode, read_author_name, default_speaker_id)
-            VALUES (?, ?, ?, ?, ?)
+                (
+                    server_id,
+                    bot_id,
+                    mention_read_mode,
+                    read_author_name,
+                    default_speaker_id,
+                    server_chat_enabled
+                )
+            VALUES (?, ?, ?, ?, ?, ?)
             ON CONFLICT(server_id, bot_id) DO NOTHING
             """,
             (
@@ -248,6 +277,7 @@ class Database:
                 DEFAULT_MENTION_READ_MODE,
                 int(DEFAULT_READ_AUTHOR_NAME),
                 fallback_speaker_id,
+                int(DEFAULT_SERVER_CHAT_ENABLED),
             ),
         )
 
@@ -276,6 +306,21 @@ class Database:
         self._ensure_guild_settings_row(server_id, bot_id, fallback_speaker_id)
         self._connection.execute(
             "UPDATE guild_settings SET read_author_name = ? WHERE server_id = ? AND bot_id = ?",
+            (int(enabled), server_id, bot_id),
+        )
+        self._connection.commit()
+        self._guild_settings_cache.pop((server_id, bot_id), None)
+
+    def set_server_chat_enabled(
+        self,
+        server_id: int,
+        bot_id: int,
+        enabled: bool,
+        fallback_speaker_id: int,
+    ) -> None:
+        self._ensure_guild_settings_row(server_id, bot_id, fallback_speaker_id)
+        self._connection.execute(
+            "UPDATE guild_settings SET server_chat_enabled = ? WHERE server_id = ? AND bot_id = ?",
             (int(enabled), server_id, bot_id),
         )
         self._connection.commit()

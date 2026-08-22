@@ -114,6 +114,8 @@ voicevox_core/
 - `/settings mention mode:リンク省略`: メンションやDiscordチャンネルURLを `りんくしょうりゃく` と読む (要 `サーバー管理` 権限)
 - `/settings read_name enabled:true`: 読み上げ前に投稿者名を読む (要 `サーバー管理` 権限)
 - `/settings read_name enabled:false`: 投稿者名を読まない (要 `サーバー管理` 権限)
+- `/settings serverchat enabled:true`: ServerChat形式の先頭 `[...]<...>` を読まない (要 `サーバー管理` 権限)
+- `/settings serverchat enabled:false`: ServerChat形式の先頭 `[...]<...>` をそのまま読む (要 `サーバー管理` 権限)
 - `/settings default_speaker speaker_id:<ID>`: サーバーのデフォルト話者IDを変更 (要 `サーバー管理` 権限)
 - `/settings user_speaker user:<ユーザー> speaker_id:<ID>`: ユーザーごとの話者IDを設定 (自分自身への設定は誰でも可、他人への設定は要 `サーバー管理` 権限)
 - `/settings clear_user_speaker user:<ユーザー>`: ユーザーごとの話者IDを解除 (自分自身の解除は誰でも可、他人の解除は要 `サーバー管理` 権限)
@@ -124,7 +126,7 @@ voicevox_core/
 権限がない場合は「権限がありません」といった案内が返されます。
 
 - `/dict add`, `/dict remove`
-- `/settings mention`, `/settings read_name`, `/settings default_speaker`
+- `/settings mention`, `/settings read_name`, `/settings serverchat`, `/settings default_speaker`
 - `/settings user_speaker`, `/settings clear_user_speaker` (自分自身を対象にする場合を除く)
 
 ## 開発用コマンド

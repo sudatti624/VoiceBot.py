@@ -196,11 +196,13 @@ def setup_commands(bot: YomiageBot) -> None:
         )
         mode = "名前/チャンネル名" if guild_settings.mention_read_mode == "name" else "リンク省略"
         read_name = "有効" if guild_settings.read_author_name else "無効"
+        server_chat = "有効" if guild_settings.server_chat_enabled else "無効"
         await interaction.response.send_message(
             "\n".join(
                 [
                     f"メンション/Discord URL: `{mode}`",
                     f"名前読み上げ: `{read_name}`",
+                    f"ServerChat整形: `{server_chat}`",
                     f"デフォルト話者ID: `{guild_settings.default_speaker_id}`",
                 ],
             ),
@@ -247,6 +249,23 @@ def setup_commands(bot: YomiageBot) -> None:
         )
         state = "有効" if enabled else "無効"
         await interaction.response.send_message(f"名前読み上げを `{state}` にしました")
+
+    @settings_group.command(
+        name="serverchat",
+        description="ServerChat形式の接頭辞を省略するか変更（サーバー管理権限が必要）",
+    )
+    @app_commands.guild_only()
+    @require_manage_guild
+    async def settings_serverchat(interaction: discord.Interaction, enabled: bool) -> None:
+        assert interaction.guild is not None  # noqa: S101
+        bot.database.set_server_chat_enabled(
+            interaction.guild.id,
+            bot.settings.bot_id,
+            enabled,
+            bot.settings.speaker_id,
+        )
+        state = "有効" if enabled else "無効"
+        await interaction.response.send_message(f"ServerChat整形を `{state}` にしました")
 
     @settings_group.command(
         name="default_speaker",

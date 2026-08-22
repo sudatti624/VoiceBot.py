@@ -23,6 +23,7 @@ def test_guild_settings_default_when_missing(database: Database) -> None:
     assert settings.mention_read_mode == "name"
     assert settings.read_author_name is True
     assert settings.default_speaker_id == FALLBACK_SPEAKER
+    assert settings.server_chat_enabled is False
 
 
 def test_fallback_speaker_used_when_row_created_by_other_setting(database: Database) -> None:
@@ -51,6 +52,19 @@ def test_changing_one_setting_does_not_break_others(database: Database) -> None:
     assert settings.default_speaker_id == 12
     assert settings.mention_read_mode == "omit"
     assert settings.read_author_name is False
+    assert settings.server_chat_enabled is False
+
+
+def test_server_chat_enabled_round_trip(database: Database) -> None:
+    database.set_server_chat_enabled(
+        SERVER_ID,
+        BOT_ID,
+        enabled=True,
+        fallback_speaker_id=FALLBACK_SPEAKER,
+    )
+
+    settings = database.get_guild_settings(SERVER_ID, BOT_ID, FALLBACK_SPEAKER)
+    assert settings.server_chat_enabled is True
 
 
 def test_guild_settings_cache_invalidated_on_write(database: Database) -> None:
