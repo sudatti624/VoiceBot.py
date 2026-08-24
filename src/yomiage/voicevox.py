@@ -47,7 +47,12 @@ class VoicevoxSynthesizer:
 
         runtime = Onnxruntime.load_once(filename=str(settings.voicevox_onnxruntime_path))
         open_jtalk = OpenJtalk(settings.open_jtalk_dict_dir)
-        self._synthesizer = Synthesizer(runtime, open_jtalk, cpu_num_threads=4)
+        self._synthesizer = Synthesizer(
+            runtime,
+            open_jtalk,
+            acceleration_mode=settings.voicevox_acceleration_mode,
+            cpu_num_threads=4,
+        )
         for model_path in discover_voice_model_paths(settings.voicevox_model_path):
             model = VoiceModelFile.open(model_path)
             self._synthesizer.load_voice_model(model)

@@ -9,6 +9,7 @@ from __future__ import annotations
 import os
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Literal
 
 from dotenv import load_dotenv
 
@@ -17,6 +18,10 @@ VOICEVOX_CACHE_SIZE_UPPER_BOUND = 100_000
 VOICEVOX_SPEED_UPPER_BOUND = 10.0
 VOICEVOX_SPEAKER_ID_UPPER_BOUND = 100_000
 BOT_ID_UPPER_BOUND = 2**63 - 1
+VoicevoxAccelerationMode = Literal["AUTO", "CPU", "GPU"]
+VOICEVOX_ACCELERATION_MODES: frozenset[VoicevoxAccelerationMode] = frozenset(
+    {"AUTO", "CPU", "GPU"},
+)
 
 
 class ConfigError(RuntimeError):
@@ -47,6 +52,14 @@ def _get_float(name: str, default: float) -> float:
     return default if raw is None else _parse_float(name, raw)
 
 
+def _get_voicevox_acceleration_mode() -> VoicevoxAccelerationMode:
+    raw = os.getenv("VOICEVOX_ACCELERATION_MODE", "CPU").upper()
+    if raw not in VOICEVOX_ACCELERATION_MODES:
+        allowed = ", ".join(sorted(VOICEVOX_ACCELERATION_MODES))
+        raise ConfigError(f"VOICEVOX_ACCELERATION_MODE must be one of {allowed}, got {raw!r}")
+    return raw
+
+
 def _require_range(
     name: str,
     value: float,
@@ -74,6 +87,7 @@ class Settings:
     voicevox_onnxruntime_path: Path
     open_jtalk_dict_dir: Path
     voicevox_model_path: Path
+    voicevox_acceleration_mode: VoicevoxAccelerationMode
     cache_size: int
     ffmpeg_path: str
 
@@ -144,6 +158,7 @@ class Settings:
             voicevox_model_path=Path(
                 os.getenv("VOICEVOX_MODEL_PATH", "./voicevox_core/models/vvms"),
             ),
+            voicevox_acceleration_mode=_get_voicevox_acceleration_mode(),
             cache_size=cache_size,
             ffmpeg_path=os.getenv("FFMPEG_PATH", "ffmpeg"),
         )

@@ -25,6 +25,7 @@ def _isolated_env(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
         "VOICEVOX_ONNXRUNTIME_PATH",
         "OPEN_JTALK_DIC_DIR",
         "VOICEVOX_MODEL_PATH",
+        "VOICEVOX_ACCELERATION_MODE",
         "VOICEVOX_CACHE_SIZE",
         "FFMPEG_PATH",
     ):
@@ -37,16 +38,19 @@ def test_valid_settings_use_defaults() -> None:
     assert settings.max_tokens == 400
     assert settings.speaker_id == 3
     assert settings.speed == 1.2
+    assert settings.voicevox_acceleration_mode == "CPU"
 
 
 def test_valid_settings_from_env(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("MAX_TOKENS", "123")
     monkeypatch.setenv("VOICEVOX_SPEAKER_ID", "8")
     monkeypatch.setenv("VOICEVOX_SPEED", "1.5")
+    monkeypatch.setenv("VOICEVOX_ACCELERATION_MODE", "auto")
     settings = Settings.from_env()
     assert settings.max_tokens == 123
     assert settings.speaker_id == 8
     assert settings.speed == 1.5
+    assert settings.voicevox_acceleration_mode == "AUTO"
 
 
 def test_missing_token_raises(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -64,6 +68,12 @@ def test_invalid_int_raises(monkeypatch: pytest.MonkeyPatch) -> None:
 def test_invalid_float_raises(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("VOICEVOX_SPEED", "fast")
     with pytest.raises(ConfigError, match="VOICEVOX_SPEED"):
+        Settings.from_env()
+
+
+def test_invalid_voicevox_acceleration_mode_raises(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("VOICEVOX_ACCELERATION_MODE", "cuda")
+    with pytest.raises(ConfigError, match="VOICEVOX_ACCELERATION_MODE"):
         Settings.from_env()
 
 
