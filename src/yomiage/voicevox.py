@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 import shutil
 from collections import OrderedDict
 from pathlib import Path
@@ -12,6 +13,7 @@ from yomiage.config import Settings
 
 CacheKey = tuple[str, int, int]
 VOICE_MODEL_GLOB = "*.vvm"
+LOGGER = logging.getLogger(__name__)
 
 
 class VoicevoxConfigError(RuntimeError):
@@ -53,9 +55,24 @@ class VoicevoxSynthesizer:
             acceleration_mode=settings.voicevox_acceleration_mode,
             cpu_num_threads=4,
         )
+        loaded_model_paths: list[Path] = []
+        last_model_error: Exception | None = None
         for model_path in discover_voice_model_paths(settings.voicevox_model_path):
-            model = VoiceModelFile.open(model_path)
-            self._synthesizer.load_voice_model(model)
+            try:
+                model = VoiceModelFile.open(model_path)
+                self._synthesizer.load_voice_model(model)
+            except Exception as exc:
+                last_model_error = exc
+                LOGGER.exception("Failed to load VOICEVOX model, skipping: %s", model_path)
+                continue
+            loaded_model_paths.append(model_path)
+
+        if not loaded_model_paths:
+            raise VoicevoxConfigError(
+                f"No VOICEVOX models could be loaded from {settings.voicevox_model_path}",
+            ) from last_model_error
+        LOGGER.info("Loaded %s VOICEVOX model(s)", len(loaded_model_paths))
+
         self._style_ids = frozenset(
             int(style.id) for character in self._synthesizer.metas() for style in character.styles
         )
