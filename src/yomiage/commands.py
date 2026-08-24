@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
+import contextlib
 import logging
 import re
+from collections.abc import Sequence
 from typing import TYPE_CHECKING
 
 import discord
@@ -23,6 +25,7 @@ SPEAKER_ID_INPUT_RANGE = app_commands.Range[int, 0, 10_000]
 NESTED_QUANTIFIER_PATTERN = re.compile(r"\((?:[^()\\]|\\.)*[*+](?:[^()\\]|\\.)*\)[*+{]")
 
 LOGGER = logging.getLogger(__name__)
+VOICE_PAGINATOR_TIMEOUT_SECONDS = 60.0
 
 if TYPE_CHECKING:
     from yomiage.bot import YomiageBot
@@ -43,6 +46,95 @@ def _validate_dict_entry(word: str, reading: str, regex: bool) -> str | None:
         if NESTED_QUANTIFIER_PATTERN.search(word):
             return "処理が極端に重くなる可能性がある正規表現は登録できません"
     return None
+
+
+class _EmbedPaginator(discord.ui.View):
+    def __init__(self, interaction: discord.Interaction, embeds: Sequence[discord.Embed]) -> None:
+        super().__init__(timeout=VOICE_PAGINATOR_TIMEOUT_SECONDS)
+        self._interaction = interaction
+        self._embeds = embeds
+        self._page_index = 0
+        self._sync_buttons()
+
+    @property
+    def current_embed(self) -> discord.Embed:
+        return self._embeds[self._page_index]
+
+    async def on_timeout(self) -> None:
+        with contextlib.suppress(discord.HTTPException, discord.NotFound):
+            await self._interaction.edit_original_response(view=None)
+
+    @discord.ui.button(label="前へ", style=discord.ButtonStyle.secondary)
+    async def previous_page(
+        self,
+        interaction: discord.Interaction,
+        _button: discord.ui.Button[_EmbedPaginator],
+    ) -> None:
+        if self._page_index > 0:
+            self._page_index -= 1
+        self._sync_buttons()
+        await interaction.response.edit_message(embed=self.current_embed, view=self)
+
+    @discord.ui.button(label="1/1", style=discord.ButtonStyle.secondary, disabled=True)
+    async def page_label(
+        self,
+        _interaction: discord.Interaction,
+        _button: discord.ui.Button[_EmbedPaginator],
+    ) -> None:
+        return
+
+    @discord.ui.button(label="次へ", style=discord.ButtonStyle.secondary)
+    async def next_page(
+        self,
+        interaction: discord.Interaction,
+        _button: discord.ui.Button[_EmbedPaginator],
+    ) -> None:
+        if self._page_index < len(self._embeds) - 1:
+            self._page_index += 1
+        self._sync_buttons()
+        await interaction.response.edit_message(embed=self.current_embed, view=self)
+
+    def _sync_buttons(self) -> None:
+        self.previous_page.disabled = self._page_index == 0
+        self.next_page.disabled = self._page_index >= len(self._embeds) - 1
+        self.page_label.label = f"{self._page_index + 1}/{len(self._embeds)}"
+
+
+def _build_voice_catalog_embeds() -> list[discord.Embed]:
+    pages = voice_catalog_pages()
+    embeds: list[discord.Embed] = []
+    for page_index, entries in enumerate(pages, start=1):
+        embed = discord.Embed(
+            title=f"VOICEVOX 話者ID一覧 ({page_index}/{len(pages)})",
+            color=discord.Color.blurple(),
+        )
+        for entry in entries:
+            embed.add_field(
+                name=entry.character,
+                value=format_voice_styles(entry),
+                inline=False,
+            )
+        embeds.append(embed)
+    return embeds
+
+
+def _build_voice_license_embeds() -> list[discord.Embed]:
+    pages = voice_license_pages()
+    embeds: list[discord.Embed] = []
+    for page_index, entries in enumerate(pages, start=1):
+        embed = discord.Embed(
+            title=f"VOICEVOX クレジット表記 ({page_index}/{len(pages)})",
+            description="詳細な条件は各キャラクターの利用規約を確認してください。",
+            color=discord.Color.blurple(),
+        )
+        for entry in entries:
+            embed.add_field(
+                name=entry.character,
+                value=format_voice_license(entry),
+                inline=False,
+            )
+        embeds.append(embed)
+    return embeds
 
 
 def setup_commands(bot: YomiageBot) -> None:
@@ -182,43 +274,16 @@ def setup_commands(bot: YomiageBot) -> None:
     @voice_group.command(name="list", description="VOICEVOXのキャラクターと話者IDを表示")
     @app_commands.guild_only()
     async def voice_list(interaction: discord.Interaction) -> None:
-        pages = voice_catalog_pages()
-        embeds: list[discord.Embed] = []
-        for page_index, entries in enumerate(pages, start=1):
-            embed = discord.Embed(
-                title=f"VOICEVOX 話者ID一覧 ({page_index}/{len(pages)})",
-                color=discord.Color.blurple(),
-            )
-            for entry in entries:
-                embed.add_field(
-                    name=entry.character,
-                    value=format_voice_styles(entry),
-                    inline=False,
-                )
-            embeds.append(embed)
-
-        await interaction.response.send_message(embeds=embeds)
+        embeds = _build_voice_catalog_embeds()
+        view = _EmbedPaginator(interaction, embeds)
+        await interaction.response.send_message(embed=view.current_embed, view=view)
 
     @voice_group.command(name="license", description="VOICEVOXキャラクターのクレジット表記を表示")
     @app_commands.guild_only()
     async def voice_license(interaction: discord.Interaction) -> None:
-        pages = voice_license_pages()
-        embeds: list[discord.Embed] = []
-        for page_index, entries in enumerate(pages, start=1):
-            embed = discord.Embed(
-                title=f"VOICEVOX クレジット表記 ({page_index}/{len(pages)})",
-                description="詳細な条件は各キャラクターの利用規約を確認してください。",
-                color=discord.Color.blurple(),
-            )
-            for entry in entries:
-                embed.add_field(
-                    name=entry.character,
-                    value=format_voice_license(entry),
-                    inline=False,
-                )
-            embeds.append(embed)
-
-        await interaction.response.send_message(embeds=embeds)
+        embeds = _build_voice_license_embeds()
+        view = _EmbedPaginator(interaction, embeds)
+        await interaction.response.send_message(embed=view.current_embed, view=view)
 
     tree.add_command(voice_group)
 

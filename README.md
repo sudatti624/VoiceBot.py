@@ -112,6 +112,8 @@ voicevox_core/
 - `/voice list`: VOICEVOXのキャラクター名、スタイル、話者IDを埋め込みで表示
 - `/voice license`: VOICEVOXキャラクターのクレジット表記と利用規約URLを埋め込みで表示
 
+`/voice` の一覧はページ移動ボタン付きで1ページずつ表示します。ボタンは1分後に消えます。
+
 ## 読み上げ設定
 
 - `/settings show`: 現在の設定を表示
