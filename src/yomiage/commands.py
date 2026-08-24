@@ -9,6 +9,13 @@ from typing import TYPE_CHECKING
 import discord
 from discord import app_commands
 
+from yomiage.voice_catalog import (
+    format_voice_license,
+    format_voice_styles,
+    voice_catalog_pages,
+    voice_license_pages,
+)
+
 MAX_DICT_ENTRIES = 27
 MAX_DICT_WORD_LENGTH = 120
 MAX_DICT_READING_LENGTH = 80
@@ -169,6 +176,51 @@ def setup_commands(bot: YomiageBot) -> None:
         await interaction.response.send_message("\n".join(lines[:MAX_DICT_ENTRIES]))
 
     tree.add_command(dict_group)
+
+    voice_group = app_commands.Group(name="voice", description="VOICEVOX話者ID")
+
+    @voice_group.command(name="list", description="VOICEVOXのキャラクターと話者IDを表示")
+    @app_commands.guild_only()
+    async def voice_list(interaction: discord.Interaction) -> None:
+        pages = voice_catalog_pages()
+        embeds: list[discord.Embed] = []
+        for page_index, entries in enumerate(pages, start=1):
+            embed = discord.Embed(
+                title=f"VOICEVOX 話者ID一覧 ({page_index}/{len(pages)})",
+                color=discord.Color.blurple(),
+            )
+            for entry in entries:
+                embed.add_field(
+                    name=entry.character,
+                    value=format_voice_styles(entry),
+                    inline=False,
+                )
+            embeds.append(embed)
+
+        await interaction.response.send_message(embeds=embeds)
+
+    @voice_group.command(name="license", description="VOICEVOXキャラクターのクレジット表記を表示")
+    @app_commands.guild_only()
+    async def voice_license(interaction: discord.Interaction) -> None:
+        pages = voice_license_pages()
+        embeds: list[discord.Embed] = []
+        for page_index, entries in enumerate(pages, start=1):
+            embed = discord.Embed(
+                title=f"VOICEVOX クレジット表記 ({page_index}/{len(pages)})",
+                description="詳細な条件は各キャラクターの利用規約を確認してください。",
+                color=discord.Color.blurple(),
+            )
+            for entry in entries:
+                embed.add_field(
+                    name=entry.character,
+                    value=format_voice_license(entry),
+                    inline=False,
+                )
+            embeds.append(embed)
+
+        await interaction.response.send_message(embeds=embeds)
+
+    tree.add_command(voice_group)
 
     settings_group = app_commands.Group(name="settings", description="読み上げ設定")
 

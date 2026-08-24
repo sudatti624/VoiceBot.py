@@ -12,6 +12,7 @@ VOICEVOX COREでDiscordのテキストチャンネル投稿をボイスチャン
 - `/skip`: 再生中の読み上げを停止
 - `/s`: `/skip` の短縮版
 - `/dict add|remove|list`: サーバー辞書の管理
+- `/voice list|license`: VOICEVOXのキャラクター名、話者ID、クレジット表記を表示
 - `/settings show|mention|read_name|default_speaker|user_speaker|clear_user_speaker`: 読み上げ設定
 - 参加時のテキストチャンネルに投稿されたメッセージをVOICEVOX COREで読み上げ
 - VC接続時にBot自身をSelf Deafにして、他ユーザーの音声を受信しない
@@ -106,6 +107,8 @@ voicevox_core/
 - `/dict add`: サーバー辞書へ単語を追加
 - `/dict remove`: サーバー辞書から単語を削除
 - `/dict list`: サーバー辞書を表示
+- `/voice list`: VOICEVOXのキャラクター名、スタイル、話者IDを埋め込みで表示
+- `/voice license`: VOICEVOXキャラクターのクレジット表記と利用規約URLを埋め込みで表示
 
 ## 読み上げ設定
 
