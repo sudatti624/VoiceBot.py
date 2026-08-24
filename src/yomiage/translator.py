@@ -13,6 +13,7 @@ LOGGER = logging.getLogger(__name__)
 
 EN_PATTERN = re.compile(r"[a-z]+|[A-Z]{3,}|[A-Z][a-z]+")
 UNICODE_FILTER = re.compile(r"[\U00010000-\U0010ffff]")
+SPEAKABLE_PATTERN = re.compile(r"[0-9A-Za-zぁ-んァ-ヶー一-龯々〆〤]")
 MAX_SPEAK_TEXT_LENGTH = 80
 MAX_SOURCE_TEXT_LENGTH = 512
 REGEX_TIMEOUT_SECONDS = 0.5
@@ -125,6 +126,10 @@ def _replacement(reading: str, match: re.Match[str]) -> str:
     for index, value in enumerate(match.groups(), start=1):
         result = result.replace(f"({index})", value or "")
     return result
+
+
+def has_speakable_content(text: str) -> bool:
+    return SPEAKABLE_PATTERN.search(UNICODE_FILTER.sub("", text)) is not None
 
 
 class _RegexTimeoutError(Exception):

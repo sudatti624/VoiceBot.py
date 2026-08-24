@@ -20,7 +20,7 @@ import discord
 from yomiage.config import Settings
 from yomiage.database import Database
 from yomiage.rate_limit import TokenBucket
-from yomiage.translator import Translator
+from yomiage.translator import Translator, has_speakable_content
 from yomiage.voicevox import SynthesizerLike
 
 LOGGER = logging.getLogger(__name__)
@@ -145,7 +145,7 @@ class SessionManager:
             return
 
         converted = self.translator.convert(item.text, guild.id, self.settings.bot_id)
-        if not converted.strip():
+        if not converted.strip() or not has_speakable_content(converted):
             return
 
         try:

@@ -5,7 +5,7 @@ from pathlib import Path
 import pytest
 
 from yomiage.database import Database
-from yomiage.translator import MAX_SPEAK_TEXT_LENGTH, Translator
+from yomiage.translator import MAX_SPEAK_TEXT_LENGTH, Translator, has_speakable_content
 
 SERVER_ID = 111
 BOT_ID = 0
@@ -112,6 +112,20 @@ def test_bracket_removal_does_not_strip_unrelated_hyphens(translator: Translator
 
 def test_empty_text_returns_empty(translator: Translator) -> None:
     assert translator.convert("", SERVER_ID, BOT_ID) == ""
+
+
+def test_symbol_only_text_is_not_speakable(translator: Translator) -> None:
+    assert translator.convert("!!!---...", SERVER_ID, BOT_ID) == "!!!---..."
+    assert not has_speakable_content("!!!---...")
+
+
+def test_emoji_only_text_is_not_speakable(translator: Translator) -> None:
+    assert translator.convert("😀🎉", SERVER_ID, BOT_ID) == ""
+    assert not has_speakable_content("😀🎉")
+
+
+def test_normal_text_is_speakable(translator: Translator) -> None:
+    assert has_speakable_content(translator.convert("あ-い", SERVER_ID, BOT_ID))
 
 
 def test_invalid_regex_entry_is_skipped_without_crashing(
