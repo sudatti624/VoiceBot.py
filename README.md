@@ -125,8 +125,8 @@ voicevox_core/
 - `/settings serverchat enabled:true`: ServerChat形式の先頭 `[...]<...>` を読まない
 - `/settings serverchat enabled:false`: ServerChat形式の先頭 `[...]<...>` をそのまま読む
 - `/settings default_speaker speaker_id:<ID>`: サーバーのデフォルト話者IDを変更
-- `/settings user_speaker user:<ユーザー> speaker_id:<ID>`: ユーザーごとの話者IDを設定
-- `/settings clear_user_speaker user:<ユーザー>`: ユーザーごとの話者IDを解除
+- `/settings user_speaker speaker_id:<ID>`: 自分の話者IDを設定
+- `/settings clear_user_speaker`: 自分の話者ID設定を解除
 
 これらのスラッシュコマンドはDiscordの `サーバー管理` 権限なしで実行できます。
 

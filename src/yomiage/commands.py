@@ -389,12 +389,11 @@ def setup_commands(bot: YomiageBot) -> None:
 
     @settings_group.command(
         name="user_speaker",
-        description="ユーザーごとの話者IDを設定",
+        description="自分の話者IDを設定",
     )
     @app_commands.guild_only()
     async def settings_user_speaker(
         interaction: discord.Interaction,
-        user: discord.Member,
         speaker_id: SPEAKER_ID_INPUT_RANGE,
     ) -> None:
         assert interaction.guild is not None  # noqa: S101
@@ -413,21 +412,20 @@ def setup_commands(bot: YomiageBot) -> None:
         bot.database.set_user_speaker_id(
             interaction.guild.id,
             bot.settings.bot_id,
-            user.id,
+            interaction.user.id,
             speaker_id,
         )
         await interaction.response.send_message(
-            f"{user.display_name} の話者IDを `{speaker_id}` にしました",
+            f"あなたの話者IDを `{speaker_id}` にしました",
         )
 
     @settings_group.command(
         name="clear_user_speaker",
-        description="ユーザーごとの話者IDを解除",
+        description="自分の話者ID設定を解除",
     )
     @app_commands.guild_only()
     async def settings_clear_user_speaker(
         interaction: discord.Interaction,
-        user: discord.Member,
     ) -> None:
         assert interaction.guild is not None  # noqa: S101
         if not isinstance(interaction.user, discord.Member):
@@ -436,7 +434,11 @@ def setup_commands(bot: YomiageBot) -> None:
             )
             return
 
-        bot.database.delete_user_speaker_id(interaction.guild.id, bot.settings.bot_id, user.id)
-        await interaction.response.send_message(f"{user.display_name} の話者設定を解除しました")
+        bot.database.delete_user_speaker_id(
+            interaction.guild.id,
+            bot.settings.bot_id,
+            interaction.user.id,
+        )
+        await interaction.response.send_message("あなたの話者設定を解除しました")
 
     tree.add_command(settings_group)
