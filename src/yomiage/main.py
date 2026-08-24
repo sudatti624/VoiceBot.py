@@ -69,7 +69,7 @@ def main() -> None:
         LOGGER.exception("Invalid VOICEVOX_SPEAKER_ID, refusing to start")
         raise
     LOGGER.info(
-        "VOICEVOX CORE loaded with %s available style ID(s)",
+        "VOICEVOX CORE initialized with %s available style ID(s)",
         len(bot.synthesizer.available_style_ids()),
     )
 

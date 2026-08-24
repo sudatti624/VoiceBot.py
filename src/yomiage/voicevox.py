@@ -65,6 +65,8 @@ class VoicevoxSynthesizer:
         self.settings = settings
         self._cache: OrderedDict[CacheKey, bytes] = OrderedDict()
         self._lock = Lock()
+        self._style_model_paths: dict[int, Path] = {}
+        self._loaded_model_paths: set[Path] = set()
 
         LOGGER.info("Loading VOICEVOX ONNX Runtime: %s", settings.voicevox_onnxruntime_path)
         runtime = Onnxruntime.load_once(filename=str(settings.voicevox_onnxruntime_path))
@@ -85,39 +87,39 @@ class VoicevoxSynthesizer:
             acceleration_mode=settings.voicevox_acceleration_mode,
             cpu_num_threads=4,
         )
-        loaded_model_paths: list[Path] = []
-        last_model_error: Exception | None = None
+
+        indexed_model_paths: list[Path] = []
         for model_path in discover_voice_model_paths(
             settings.voicevox_model_path,
             settings.voicevox_model_exclude,
         ):
             try:
-                LOGGER.info("Opening VOICEVOX model: %s", model_path)
+                LOGGER.info("Opening VOICEVOX model metadata: %s", model_path)
                 model = VoiceModelFile.open(model_path)
-                LOGGER.info("Loading VOICEVOX model into synthesizer: %s", model_path)
-                self._synthesizer.load_voice_model(model)
-            except Exception as exc:
-                last_model_error = exc
-                LOGGER.exception("Failed to load VOICEVOX model, skipping: %s", model_path)
+                for character in model.metas:
+                    for style in character.styles:
+                        self._style_model_paths[int(style.id)] = model_path
+                model.close()
+            except Exception:
+                LOGGER.exception("Failed to read VOICEVOX model metadata, skipping: %s", model_path)
                 continue
-            loaded_model_paths.append(model_path)
-            LOGGER.info("Loaded VOICEVOX model: %s", model_path)
+            indexed_model_paths.append(model_path)
+            LOGGER.info("Indexed VOICEVOX model metadata: %s", model_path)
 
-        if not loaded_model_paths:
+        if not indexed_model_paths:
             raise VoicevoxConfigError(
-                f"No VOICEVOX models could be loaded from {settings.voicevox_model_path}",
-            ) from last_model_error
-        LOGGER.info("Loaded %s VOICEVOX model(s)", len(loaded_model_paths))
+                f"No VOICEVOX model metadata could be read from {settings.voicevox_model_path}",
+            )
+        LOGGER.info("Indexed %s VOICEVOX model(s)", len(indexed_model_paths))
 
-        self._style_ids = frozenset(
-            int(style.id) for character in self._synthesizer.metas() for style in character.styles
-        )
+        self._style_ids = frozenset(self._style_model_paths)
         LOGGER.info("Available VOICEVOX style IDs: %s", sorted(self._style_ids))
 
     def generate(self, text: str, speaker_id: int | None = None) -> bytes:
         style_id = speaker_id if speaker_id is not None else self.settings.speaker_id
         key = (text, style_id, int(self.settings.speed * 100))
         with self._lock:
+            self._load_model_for_style(style_id)
             cached = self._cache.get(key)
             if cached is not None:
                 self._cache.move_to_end(key)
@@ -137,6 +139,20 @@ class VoicevoxSynthesizer:
 
     def available_style_ids(self) -> frozenset[int]:
         return self._style_ids
+
+    def _load_model_for_style(self, style_id: int) -> None:
+        model_path = self._style_model_paths.get(style_id)
+        if model_path is None:
+            raise VoicevoxConfigError(f"VOICEVOX style ID is not available: {style_id}")
+        if model_path in self._loaded_model_paths:
+            return
+
+        LOGGER.info("Opening VOICEVOX model for style_id=%s: %s", style_id, model_path)
+        model = VoiceModelFile.open(model_path)
+        LOGGER.info("Loading VOICEVOX model into synthesizer: %s", model_path)
+        self._synthesizer.load_voice_model(model)
+        self._loaded_model_paths.add(model_path)
+        LOGGER.info("Loaded VOICEVOX model: %s", model_path)
 
 
 def validate_environment(settings: Settings) -> None:
