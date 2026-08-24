@@ -47,8 +47,19 @@ class VoicevoxSynthesizer:
         self._cache: OrderedDict[CacheKey, bytes] = OrderedDict()
         self._lock = Lock()
 
+        LOGGER.info("Loading VOICEVOX ONNX Runtime: %s", settings.voicevox_onnxruntime_path)
         runtime = Onnxruntime.load_once(filename=str(settings.voicevox_onnxruntime_path))
+        try:
+            LOGGER.info("VOICEVOX supported devices: %r", runtime.supported_devices())
+        except Exception:
+            LOGGER.exception("Failed to query VOICEVOX supported devices")
+        LOGGER.info("Loading OpenJTalk dictionary: %s", settings.open_jtalk_dict_dir)
         open_jtalk = OpenJtalk(settings.open_jtalk_dict_dir)
+        LOGGER.info(
+            "Creating VOICEVOX synthesizer: acceleration=%s cpu_threads=%s",
+            settings.voicevox_acceleration_mode,
+            4,
+        )
         self._synthesizer = Synthesizer(
             runtime,
             open_jtalk,
@@ -59,13 +70,16 @@ class VoicevoxSynthesizer:
         last_model_error: Exception | None = None
         for model_path in discover_voice_model_paths(settings.voicevox_model_path):
             try:
+                LOGGER.info("Opening VOICEVOX model: %s", model_path)
                 model = VoiceModelFile.open(model_path)
+                LOGGER.info("Loading VOICEVOX model into synthesizer: %s", model_path)
                 self._synthesizer.load_voice_model(model)
             except Exception as exc:
                 last_model_error = exc
                 LOGGER.exception("Failed to load VOICEVOX model, skipping: %s", model_path)
                 continue
             loaded_model_paths.append(model_path)
+            LOGGER.info("Loaded VOICEVOX model: %s", model_path)
 
         if not loaded_model_paths:
             raise VoicevoxConfigError(
@@ -76,6 +90,7 @@ class VoicevoxSynthesizer:
         self._style_ids = frozenset(
             int(style.id) for character in self._synthesizer.metas() for style in character.styles
         )
+        LOGGER.info("Available VOICEVOX style IDs: %s", sorted(self._style_ids))
 
     def generate(self, text: str, speaker_id: int | None = None) -> bytes:
         style_id = speaker_id if speaker_id is not None else self.settings.speaker_id
@@ -104,6 +119,7 @@ class VoicevoxSynthesizer:
 
 def validate_environment(settings: Settings) -> None:
     """Validate that VOICEVOX files and ffmpeg are actually usable before startup."""
+    LOGGER.info("Validating VOICEVOX environment")
     if not settings.voicevox_onnxruntime_path.is_file():
         raise VoicevoxConfigError(
             f"VOICEVOX_ONNXRUNTIME_PATH must be a file: {settings.voicevox_onnxruntime_path}",
@@ -118,12 +134,14 @@ def validate_environment(settings: Settings) -> None:
             "VOICEVOX_MODEL_PATH must be a .vvm file or a directory containing .vvm files: "
             f"{settings.voicevox_model_path}",
         )
+    LOGGER.info("VOICEVOX environment has %s model candidate(s)", len(model_paths))
 
     if shutil.which(settings.ffmpeg_path) is None:
         raise VoicevoxConfigError(
             f"ffmpeg executable not found: {settings.ffmpeg_path!r}. "
             "Install ffmpeg or set FFMPEG_PATH.",
         )
+    LOGGER.info("VOICEVOX environment validation passed")
 
 
 def validate_speaker_id(settings: Settings, synthesizer: SynthesizerLike) -> None:

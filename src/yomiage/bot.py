@@ -47,12 +47,20 @@ class YomiageBot(discord.Client):
         setup_commands(self)
 
     async def setup_hook(self) -> None:
-        await self.tree.sync()
+        LOGGER.info("Syncing Discord slash commands")
+        commands = await self.tree.sync()
+        LOGGER.info("Synced %s Discord slash command(s)", len(commands))
 
     async def on_ready(self) -> None:
         user = self.user
         if user is not None:
             LOGGER.info("Bot ready: %s (%s)", user, user.id)
+
+    async def on_disconnect(self) -> None:
+        LOGGER.warning("Discord client disconnected")
+
+    async def on_resumed(self) -> None:
+        LOGGER.info("Discord client resumed")
 
     async def on_guild_join(self, guild: discord.Guild) -> None:
         LOGGER.info("Joined guild=%s", guild.id)
