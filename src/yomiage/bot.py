@@ -17,6 +17,7 @@ from yomiage.voicevox import SynthesizerLike, VoicevoxSynthesizer
 LOGGER = logging.getLogger(__name__)
 MAX_MESSAGE_LENGTH = 80
 SKIP_SHORTCUTS = frozenset({"s", "S", "!s", "!S", "！s", "！S"})
+CUSTOM_EMOJI_PATTERN = re.compile(r"<a?:([A-Za-z0-9_]{2,32}):\d+>")
 MENTION_PATTERN = re.compile(r"<(@!?|@&|#)(\d+)>")
 DISCORD_CHANNEL_URL_PATTERN = re.compile(
     r"https?://(?:canary\.|ptb\.)?discord(?:app)?\.com/channels/(\d+|@me)/(\d+)(?:/\d+)?",
@@ -253,6 +254,7 @@ class YomiageBot(discord.Client):
         content = message.content
         if guild_settings.server_chat_enabled:
             content = SERVER_CHAT_PREFIX_PATTERN.sub("", content, count=1)
+        content = CUSTOM_EMOJI_PATTERN.sub(lambda match: match.group(1), content)
         content = self._replace_discord_references(
             message.guild,
             content,

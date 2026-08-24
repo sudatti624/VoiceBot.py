@@ -266,3 +266,21 @@ def test_prepare_message_keeps_server_chat_prefix_when_disabled(tmp_path: Path) 
         assert bot._prepare_message_text(message) == expected
     finally:
         asyncio.run(bot.close())
+
+
+def test_prepare_message_replaces_custom_emoji_with_name(tmp_path: Path) -> None:
+    bot = make_bot(tmp_path)
+    guild = FakeGuild(1)
+    text_channel = FakeTextChannel(20)
+    author = FakeMember(200, None, display_name="DiscordUser")
+    message = FakeMessage(
+        content="いいね <:kusa:123456789012345678> <a:party:987654321098765432>",
+        author=author,
+        guild=guild,
+        channel=text_channel,
+    )
+
+    try:
+        assert bot._prepare_message_text(message) == "DiscordUser、いいね kusa party"
+    finally:
+        asyncio.run(bot.close())
