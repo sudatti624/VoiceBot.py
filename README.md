@@ -103,31 +103,24 @@ voicevox_core/
 - `/skip`: 現在の読み上げを停止
 - `/s`: `/skip` の短縮版
 - `s`, `S`, `!s`, `!S`, `！s`, `！S`: テキスト投稿で読み上げを停止
-- `/dict add`: サーバー辞書へ単語を追加 (要 `サーバー管理` 権限)
-- `/dict remove`: サーバー辞書から単語を削除 (要 `サーバー管理` 権限)
-- `/dict list`: サーバー辞書を表示 (誰でも実行可能)
+- `/dict add`: サーバー辞書へ単語を追加
+- `/dict remove`: サーバー辞書から単語を削除
+- `/dict list`: サーバー辞書を表示
 
 ## 読み上げ設定
 
-- `/settings show`: 現在の設定を表示 (誰でも実行可能)
-- `/settings mention mode:名前/チャンネル名`: メンションやDiscordチャンネルURLを名前で読む (要 `サーバー管理` 権限)
-- `/settings mention mode:リンク省略`: メンションやDiscordチャンネルURLを `りんくしょうりゃく` と読む (要 `サーバー管理` 権限)
-- `/settings read_name enabled:true`: 読み上げ前に投稿者名を読む (要 `サーバー管理` 権限)
-- `/settings read_name enabled:false`: 投稿者名を読まない (要 `サーバー管理` 権限)
-- `/settings serverchat enabled:true`: ServerChat形式の先頭 `[...]<...>` を読まない (要 `サーバー管理` 権限)
-- `/settings serverchat enabled:false`: ServerChat形式の先頭 `[...]<...>` をそのまま読む (要 `サーバー管理` 権限)
-- `/settings default_speaker speaker_id:<ID>`: サーバーのデフォルト話者IDを変更 (要 `サーバー管理` 権限)
-- `/settings user_speaker user:<ユーザー> speaker_id:<ID>`: ユーザーごとの話者IDを設定 (自分自身への設定は誰でも可、他人への設定は要 `サーバー管理` 権限)
-- `/settings clear_user_speaker user:<ユーザー>`: ユーザーごとの話者IDを解除 (自分自身の解除は誰でも可、他人の解除は要 `サーバー管理` 権限)
+- `/settings show`: 現在の設定を表示
+- `/settings mention mode:名前/チャンネル名`: メンションやDiscordチャンネルURLを名前で読む
+- `/settings mention mode:リンク省略`: メンションやDiscordチャンネルURLを `りんくしょうりゃく` と読む
+- `/settings read_name enabled:true`: 読み上げ前に投稿者名を読む
+- `/settings read_name enabled:false`: 投稿者名を読まない
+- `/settings serverchat enabled:true`: ServerChat形式の先頭 `[...]<...>` を読まない
+- `/settings serverchat enabled:false`: ServerChat形式の先頭 `[...]<...>` をそのまま読む
+- `/settings default_speaker speaker_id:<ID>`: サーバーのデフォルト話者IDを変更
+- `/settings user_speaker user:<ユーザー> speaker_id:<ID>`: ユーザーごとの話者IDを設定
+- `/settings clear_user_speaker user:<ユーザー>`: ユーザーごとの話者IDを解除
 
-### 権限が必要なコマンド一覧
-
-以下のコマンドはDiscordの `サーバー管理` (Manage Server) 権限を持つメンバーのみ実行できます。
-権限がない場合は「権限がありません」といった案内が返されます。
-
-- `/dict add`, `/dict remove`
-- `/settings mention`, `/settings read_name`, `/settings serverchat`, `/settings default_speaker`
-- `/settings user_speaker`, `/settings clear_user_speaker` (自分自身を対象にする場合を除く)
+これらのスラッシュコマンドはDiscordの `サーバー管理` 権限なしで実行できます。
 
 ## 開発用コマンド
 

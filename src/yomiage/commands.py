@@ -1,9 +1,4 @@
-"""Slash command definitions: join/leave/skip, server dictionary, and settings.
-
-Server-wide settings and the dictionary are gated behind Discord's "Manage
-Guild" permission through a couple of small shared helpers, so the same check
-is not copy-pasted into every command body.
-"""
+"""Slash command definitions: join/leave/skip, server dictionary, and settings."""
 
 from __future__ import annotations
 
@@ -24,12 +19,6 @@ LOGGER = logging.getLogger(__name__)
 
 if TYPE_CHECKING:
     from yomiage.bot import YomiageBot
-
-require_manage_guild = app_commands.checks.has_permissions(manage_guild=True)
-
-
-def _has_manage_guild(member: discord.Member) -> bool:
-    return member.guild_permissions.manage_guild
 
 
 def _validate_dict_entry(word: str, reading: str, regex: bool) -> str | None:
@@ -113,10 +102,9 @@ def setup_commands(bot: YomiageBot) -> None:
 
     dict_group = app_commands.Group(name="dict", description="サーバー辞書の管理")
 
-    @dict_group.command(name="add", description="単語を辞書に追加（サーバー管理権限が必要）")
+    @dict_group.command(name="add", description="単語を辞書に追加")
     @app_commands.describe(word="単語", reading="読み方", regex="正規表現として扱うか")
     @app_commands.guild_only()
-    @require_manage_guild
     async def dict_add(
         interaction: discord.Interaction,
         word: str,
@@ -148,10 +136,9 @@ def setup_commands(bot: YomiageBot) -> None:
             f"単語を辞書に追加しました\n単語: `{word}`\n読み: `{reading}`\n正規表現: `{regex}`",
         )
 
-    @dict_group.command(name="remove", description="単語を辞書から削除（サーバー管理権限が必要）")
+    @dict_group.command(name="remove", description="単語を辞書から削除")
     @app_commands.describe(word="単語")
     @app_commands.guild_only()
-    @require_manage_guild
     async def dict_remove(interaction: discord.Interaction, word: str) -> None:
         assert interaction.guild is not None  # noqa: S101
         deleted = bot.database.delete_server_dict_entry(
@@ -210,7 +197,7 @@ def setup_commands(bot: YomiageBot) -> None:
 
     @settings_group.command(
         name="mention",
-        description="メンションやDiscordチャンネルURLの読み方を変更（サーバー管理権限が必要）",
+        description="メンションやDiscordチャンネルURLの読み方を変更",
     )
     @app_commands.choices(
         mode=[
@@ -219,7 +206,6 @@ def setup_commands(bot: YomiageBot) -> None:
         ],
     )
     @app_commands.guild_only()
-    @require_manage_guild
     async def settings_mention(
         interaction: discord.Interaction,
         mode: app_commands.Choice[str],
@@ -235,10 +221,9 @@ def setup_commands(bot: YomiageBot) -> None:
 
     @settings_group.command(
         name="read_name",
-        description="読み上げ前に投稿者名を読むか変更（サーバー管理権限が必要）",
+        description="読み上げ前に投稿者名を読むか変更",
     )
     @app_commands.guild_only()
-    @require_manage_guild
     async def settings_read_name(interaction: discord.Interaction, enabled: bool) -> None:
         assert interaction.guild is not None  # noqa: S101
         bot.database.set_read_author_name(
@@ -252,10 +237,9 @@ def setup_commands(bot: YomiageBot) -> None:
 
     @settings_group.command(
         name="serverchat",
-        description="ServerChat形式の接頭辞を省略するか変更（サーバー管理権限が必要）",
+        description="ServerChat形式の接頭辞を省略するか変更",
     )
     @app_commands.guild_only()
-    @require_manage_guild
     async def settings_serverchat(interaction: discord.Interaction, enabled: bool) -> None:
         assert interaction.guild is not None  # noqa: S101
         bot.database.set_server_chat_enabled(
@@ -269,10 +253,9 @@ def setup_commands(bot: YomiageBot) -> None:
 
     @settings_group.command(
         name="default_speaker",
-        description="デフォルト話者IDを変更（サーバー管理権限が必要）",
+        description="デフォルト話者IDを変更",
     )
     @app_commands.guild_only()
-    @require_manage_guild
     async def settings_default_speaker(
         interaction: discord.Interaction,
         speaker_id: SPEAKER_ID_INPUT_RANGE,
@@ -289,7 +272,7 @@ def setup_commands(bot: YomiageBot) -> None:
 
     @settings_group.command(
         name="user_speaker",
-        description="ユーザーごとの話者IDを設定（他人を変更するにはサーバー管理権限が必要）",
+        description="ユーザーごとの話者IDを設定",
     )
     @app_commands.guild_only()
     async def settings_user_speaker(
@@ -301,13 +284,6 @@ def setup_commands(bot: YomiageBot) -> None:
         if not isinstance(interaction.user, discord.Member):
             await interaction.response.send_message(
                 "このコマンドはサーバー内でのみ使用できます",
-            )
-            return
-
-        is_self = user.id == interaction.user.id
-        if not is_self and not _has_manage_guild(interaction.user):
-            await interaction.response.send_message(
-                "他のユーザーの話者を変更するには「サーバーの管理」権限が必要です",
             )
             return
 
@@ -329,7 +305,7 @@ def setup_commands(bot: YomiageBot) -> None:
 
     @settings_group.command(
         name="clear_user_speaker",
-        description="ユーザーごとの話者IDを解除（他人を変更するにはサーバー管理権限が必要）",
+        description="ユーザーごとの話者IDを解除",
     )
     @app_commands.guild_only()
     async def settings_clear_user_speaker(
@@ -340,13 +316,6 @@ def setup_commands(bot: YomiageBot) -> None:
         if not isinstance(interaction.user, discord.Member):
             await interaction.response.send_message(
                 "このコマンドはサーバー内でのみ使用できます",
-            )
-            return
-
-        is_self = user.id == interaction.user.id
-        if not is_self and not _has_manage_guild(interaction.user):
-            await interaction.response.send_message(
-                "他のユーザーの話者を変更するには「サーバーの管理」権限が必要です",
             )
             return
 
