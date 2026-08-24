@@ -25,6 +25,7 @@ def _isolated_env(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
         "VOICEVOX_ONNXRUNTIME_PATH",
         "OPEN_JTALK_DIC_DIR",
         "VOICEVOX_MODEL_PATH",
+        "VOICEVOX_MODEL_EXCLUDE",
         "VOICEVOX_ACCELERATION_MODE",
         "VOICEVOX_CACHE_SIZE",
         "FFMPEG_PATH",
@@ -38,6 +39,7 @@ def test_valid_settings_use_defaults() -> None:
     assert settings.max_tokens == 400
     assert settings.speaker_id == 3
     assert settings.speed == 1.2
+    assert settings.voicevox_model_exclude == ()
     assert settings.voicevox_acceleration_mode == "CPU"
 
 
@@ -45,11 +47,13 @@ def test_valid_settings_from_env(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("MAX_TOKENS", "123")
     monkeypatch.setenv("VOICEVOX_SPEAKER_ID", "8")
     monkeypatch.setenv("VOICEVOX_SPEED", "1.5")
+    monkeypatch.setenv("VOICEVOX_MODEL_EXCLUDE", "4.vvm, 9")
     monkeypatch.setenv("VOICEVOX_ACCELERATION_MODE", "auto")
     settings = Settings.from_env()
     assert settings.max_tokens == 123
     assert settings.speaker_id == 8
     assert settings.speed == 1.5
+    assert settings.voicevox_model_exclude == ("4.vvm", "9")
     assert settings.voicevox_acceleration_mode == "AUTO"
 
 
@@ -178,12 +182,27 @@ def test_voicevox_model_path_discovers_sibling_vvm_files(tmp_path: Path) -> None
     models_dir.mkdir()
     model_0 = models_dir / "0.vvm"
     model_1 = models_dir / "1.vvm"
+    model_10 = models_dir / "10.vvm"
     ignored = models_dir / "README.txt"
+    model_10.write_bytes(b"model10")
     model_1.write_bytes(b"model1")
     ignored.write_text("ignored", encoding="utf-8")
     model_0.write_bytes(b"model0")
 
-    assert discover_voice_model_paths(model_0) == (model_0, model_1)
+    assert discover_voice_model_paths(model_0) == (model_0, model_1, model_10)
+
+
+def test_voicevox_model_path_excludes_matching_models(tmp_path: Path) -> None:
+    models_dir = tmp_path / "vvms"
+    models_dir.mkdir()
+    model_0 = models_dir / "0.vvm"
+    model_4 = models_dir / "4.vvm"
+    model_9 = models_dir / "9.vvm"
+    model_0.write_bytes(b"model0")
+    model_4.write_bytes(b"model4")
+    model_9.write_bytes(b"model9")
+
+    assert discover_voice_model_paths(models_dir, excludes=("4.vvm", "9")) == (model_0,)
 
 
 def test_voicevox_model_path_can_be_directory(

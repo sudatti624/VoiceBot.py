@@ -20,13 +20,32 @@ class VoicevoxConfigError(RuntimeError):
     """Raised when the VOICEVOX runtime environment is misconfigured."""
 
 
-def discover_voice_model_paths(path: Path) -> tuple[Path, ...]:
+def _is_excluded_voice_model(path: Path, excludes: tuple[str, ...]) -> bool:
+    return any(exclude in {path.name, path.stem, str(path)} for exclude in excludes)
+
+
+def _voice_model_sort_key(path: Path) -> tuple[int, int | str]:
+    try:
+        return (0, int(path.stem))
+    except ValueError:
+        return (1, path.name)
+
+
+def discover_voice_model_paths(path: Path, excludes: tuple[str, ...] = ()) -> tuple[Path, ...]:
     """Return every VVM model that should be loaded for the configured path."""
     if path.is_dir():
-        return tuple(sorted(path.glob(VOICE_MODEL_GLOB)))
+        return tuple(
+            model_path
+            for model_path in sorted(path.glob(VOICE_MODEL_GLOB), key=_voice_model_sort_key)
+            if not _is_excluded_voice_model(model_path, excludes)
+        )
     if path.is_file():
-        model_paths = tuple(sorted(path.parent.glob(VOICE_MODEL_GLOB)))
-        return model_paths or (path,)
+        model_paths = tuple(sorted(path.parent.glob(VOICE_MODEL_GLOB), key=_voice_model_sort_key))
+        return tuple(
+            model_path
+            for model_path in (model_paths or (path,))
+            if not _is_excluded_voice_model(model_path, excludes)
+        )
     return ()
 
 
@@ -68,7 +87,10 @@ class VoicevoxSynthesizer:
         )
         loaded_model_paths: list[Path] = []
         last_model_error: Exception | None = None
-        for model_path in discover_voice_model_paths(settings.voicevox_model_path):
+        for model_path in discover_voice_model_paths(
+            settings.voicevox_model_path,
+            settings.voicevox_model_exclude,
+        ):
             try:
                 LOGGER.info("Opening VOICEVOX model: %s", model_path)
                 model = VoiceModelFile.open(model_path)
@@ -128,7 +150,10 @@ def validate_environment(settings: Settings) -> None:
         raise VoicevoxConfigError(
             f"OPEN_JTALK_DIC_DIR must be a directory: {settings.open_jtalk_dict_dir}",
         )
-    model_paths = discover_voice_model_paths(settings.voicevox_model_path)
+    model_paths = discover_voice_model_paths(
+        settings.voicevox_model_path,
+        settings.voicevox_model_exclude,
+    )
     if not model_paths:
         raise VoicevoxConfigError(
             "VOICEVOX_MODEL_PATH must be a .vvm file or a directory containing .vvm files: "

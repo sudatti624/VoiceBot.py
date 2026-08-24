@@ -74,6 +74,7 @@ DISCORD_BOT_TOKEN=あなたのDiscord Botトークン
 VOICEVOX_ONNXRUNTIME_PATH=./voicevox_core/onnxruntime/lib/libvoicevox_onnxruntime.so.1.17.3
 OPEN_JTALK_DIC_DIR=./voicevox_core/dict/open_jtalk_dic_utf_8-1.11
 VOICEVOX_MODEL_PATH=./voicevox_core/models/vvms
+VOICEVOX_MODEL_EXCLUDE=
 VOICEVOX_ACCELERATION_MODE=CPU
 ```
 
@@ -173,6 +174,7 @@ uv run pytest
 - `VOICEVOX_ONNXRUNTIME_PATH`: `libvoicevox_onnxruntime.so...` のパス
 - `OPEN_JTALK_DIC_DIR`: OpenJTalk辞書ディレクトリ
 - `VOICEVOX_MODEL_PATH`: `.vvm` モデルファイル、または `.vvm` を含むディレクトリ
+- `VOICEVOX_MODEL_EXCLUDE`: 読み込まない `.vvm`。例: `4.vvm`、複数なら `4.vvm,9.vvm`
 - `VOICEVOX_ACCELERATION_MODE`: `CPU`, `AUTO`, `GPU` のいずれか。デフォルトは `CPU`
 - `VOICEVOX_CACHE_SIZE`: 音声合成キャッシュ数。デフォルトは `100`
 - `FFMPEG_PATH`: ffmpegコマンド。デフォルトは `ffmpeg`

@@ -47,7 +47,12 @@ def main() -> None:
         LOGGER.exception("Invalid configuration, refusing to start")
         raise
 
-    model_paths = discover_voice_model_paths(settings.voicevox_model_path)
+    if settings.voicevox_model_exclude:
+        LOGGER.warning("VOICEVOX model exclude list: %s", settings.voicevox_model_exclude)
+    model_paths = discover_voice_model_paths(
+        settings.voicevox_model_path,
+        settings.voicevox_model_exclude,
+    )
     LOGGER.info("Discovered %s VOICEVOX model candidate(s)", len(model_paths))
     for model_path in model_paths:
         LOGGER.info("VOICEVOX model candidate: %s", model_path)

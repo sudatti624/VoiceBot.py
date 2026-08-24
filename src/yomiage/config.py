@@ -60,6 +60,11 @@ def _get_voicevox_acceleration_mode() -> VoicevoxAccelerationMode:
     return raw
 
 
+def _get_csv_values(name: str) -> tuple[str, ...]:
+    raw = os.getenv(name, "")
+    return tuple(value.strip() for value in raw.split(",") if value.strip())
+
+
 def _require_range(
     name: str,
     value: float,
@@ -87,6 +92,7 @@ class Settings:
     voicevox_onnxruntime_path: Path
     open_jtalk_dict_dir: Path
     voicevox_model_path: Path
+    voicevox_model_exclude: tuple[str, ...]
     voicevox_acceleration_mode: VoicevoxAccelerationMode
     cache_size: int
     ffmpeg_path: str
@@ -158,6 +164,7 @@ class Settings:
             voicevox_model_path=Path(
                 os.getenv("VOICEVOX_MODEL_PATH", "./voicevox_core/models/vvms"),
             ),
+            voicevox_model_exclude=_get_csv_values("VOICEVOX_MODEL_EXCLUDE"),
             voicevox_acceleration_mode=_get_voicevox_acceleration_mode(),
             cache_size=cache_size,
             ffmpeg_path=os.getenv("FFMPEG_PATH", "ffmpeg"),

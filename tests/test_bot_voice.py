@@ -111,6 +111,7 @@ def make_bot(tmp_path: Path) -> YomiageBot:
         voicevox_onnxruntime_path=tmp_path / "onnxruntime",
         open_jtalk_dict_dir=tmp_path / "dict",
         voicevox_model_path=tmp_path / "model.vvm",
+        voicevox_model_exclude=(),
         voicevox_acceleration_mode="CPU",
         cache_size=10,
         ffmpeg_path="ffmpeg",
