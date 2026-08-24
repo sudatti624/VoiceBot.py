@@ -5,7 +5,11 @@ from pathlib import Path
 import pytest
 
 from yomiage.config import ConfigError, Settings
-from yomiage.voicevox import VoicevoxConfigError, validate_environment
+from yomiage.voicevox import (
+    VoicevoxConfigError,
+    discover_voice_model_paths,
+    validate_environment,
+)
 
 
 @pytest.fixture(autouse=True)
@@ -154,6 +158,39 @@ def test_environment_validation_accepts_existing_files_and_ffmpeg(
     monkeypatch.setenv("VOICEVOX_ONNXRUNTIME_PATH", str(onnxruntime_path))
     monkeypatch.setenv("OPEN_JTALK_DIC_DIR", str(dict_path))
     monkeypatch.setenv("VOICEVOX_MODEL_PATH", str(model_path))
+    monkeypatch.setenv("FFMPEG_PATH", "python3")
+
+    validate_environment(Settings.from_env())
+
+
+def test_voicevox_model_path_discovers_sibling_vvm_files(tmp_path: Path) -> None:
+    models_dir = tmp_path / "vvms"
+    models_dir.mkdir()
+    model_0 = models_dir / "0.vvm"
+    model_1 = models_dir / "1.vvm"
+    ignored = models_dir / "README.txt"
+    model_1.write_bytes(b"model1")
+    ignored.write_text("ignored", encoding="utf-8")
+    model_0.write_bytes(b"model0")
+
+    assert discover_voice_model_paths(model_0) == (model_0, model_1)
+
+
+def test_voicevox_model_path_can_be_directory(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    onnxruntime_path = tmp_path / "onnxruntime.so"
+    dict_path = tmp_path / "dict"
+    models_dir = tmp_path / "vvms"
+    onnxruntime_path.write_bytes(b"onnxruntime")
+    dict_path.mkdir()
+    models_dir.mkdir()
+    (models_dir / "0.vvm").write_bytes(b"model")
+
+    monkeypatch.setenv("VOICEVOX_ONNXRUNTIME_PATH", str(onnxruntime_path))
+    monkeypatch.setenv("OPEN_JTALK_DIC_DIR", str(dict_path))
+    monkeypatch.setenv("VOICEVOX_MODEL_PATH", str(models_dir))
     monkeypatch.setenv("FFMPEG_PATH", "python3")
 
     validate_environment(Settings.from_env())

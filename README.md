@@ -50,6 +50,8 @@ Discord Developer Portalでは、Botに次の権限とIntentを付けてくだ�
 
 VOICEVOX CORE はPyPIだけでは完結しません。このプロジェクトではPython wheelを依存に含めていますが、
 実行時には別途VOICEVOX COREのONNX Runtime、OpenJTalk辞書、`.vvm` モデルが必要です。
+`VOICEVOX_MODEL_PATH` に `.vvm` ファイルを指定した場合、そのファイルと同じディレクトリにある
+`.vvm` もまとめてロードします。ディレクトリ自体を指定した場合は、その中の `.vvm` をロードします。
 
 ## セットアップ
 
@@ -71,7 +73,7 @@ cp .env.example .env
 DISCORD_BOT_TOKEN=あなたのDiscord Botトークン
 VOICEVOX_ONNXRUNTIME_PATH=./voicevox_core/onnxruntime/lib/libvoicevox_onnxruntime.so.1.17.3
 OPEN_JTALK_DIC_DIR=./voicevox_core/dict/open_jtalk_dic_utf_8-1.11
-VOICEVOX_MODEL_PATH=./voicevox_core/models/vvms/0.vvm
+VOICEVOX_MODEL_PATH=./voicevox_core/models/vvms
 ```
 
 4. Botを起動します。
@@ -167,7 +169,7 @@ uv run pytest
 - `VOICEVOX_SPEED`: 話速。デフォルトは `1.2`
 - `VOICEVOX_ONNXRUNTIME_PATH`: `libvoicevox_onnxruntime.so...` のパス
 - `OPEN_JTALK_DIC_DIR`: OpenJTalk辞書ディレクトリ
-- `VOICEVOX_MODEL_PATH`: `.vvm` モデルファイル
+- `VOICEVOX_MODEL_PATH`: `.vvm` モデルファイル、または `.vvm` を含むディレクトリ
 - `VOICEVOX_CACHE_SIZE`: 音声合成キャッシュ数。デフォルトは `100`
 - `FFMPEG_PATH`: ffmpegコマンド。デフォルトは `ffmpeg`
 

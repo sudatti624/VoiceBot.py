@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import shutil
 from collections import OrderedDict
+from pathlib import Path
 from threading import Lock
 from typing import Protocol, runtime_checkable
 
@@ -10,10 +11,21 @@ from voicevox_core.blocking import Onnxruntime, OpenJtalk, Synthesizer, VoiceMod
 from yomiage.config import Settings
 
 CacheKey = tuple[str, int, int]
+VOICE_MODEL_GLOB = "*.vvm"
 
 
 class VoicevoxConfigError(RuntimeError):
     """Raised when the VOICEVOX runtime environment is misconfigured."""
+
+
+def discover_voice_model_paths(path: Path) -> tuple[Path, ...]:
+    """Return every VVM model that should be loaded for the configured path."""
+    if path.is_dir():
+        return tuple(sorted(path.glob(VOICE_MODEL_GLOB)))
+    if path.is_file():
+        model_paths = tuple(sorted(path.parent.glob(VOICE_MODEL_GLOB)))
+        return model_paths or (path,)
+    return ()
 
 
 @runtime_checkable
@@ -36,12 +48,11 @@ class VoicevoxSynthesizer:
         runtime = Onnxruntime.load_once(filename=str(settings.voicevox_onnxruntime_path))
         open_jtalk = OpenJtalk(settings.open_jtalk_dict_dir)
         self._synthesizer = Synthesizer(runtime, open_jtalk, cpu_num_threads=4)
-        model = VoiceModelFile.open(settings.voicevox_model_path)
-        self._synthesizer.load_voice_model(model)
+        for model_path in discover_voice_model_paths(settings.voicevox_model_path):
+            model = VoiceModelFile.open(model_path)
+            self._synthesizer.load_voice_model(model)
         self._style_ids = frozenset(
-            int(style.id)
-            for character in self._synthesizer.metas()
-            for style in character.styles
+            int(style.id) for character in self._synthesizer.metas() for style in character.styles
         )
 
     def generate(self, text: str, speaker_id: int | None = None) -> bytes:
@@ -79,9 +90,11 @@ def validate_environment(settings: Settings) -> None:
         raise VoicevoxConfigError(
             f"OPEN_JTALK_DIC_DIR must be a directory: {settings.open_jtalk_dict_dir}",
         )
-    if not settings.voicevox_model_path.is_file():
+    model_paths = discover_voice_model_paths(settings.voicevox_model_path)
+    if not model_paths:
         raise VoicevoxConfigError(
-            f"VOICEVOX_MODEL_PATH must be a file: {settings.voicevox_model_path}",
+            "VOICEVOX_MODEL_PATH must be a .vvm file or a directory containing .vvm files: "
+            f"{settings.voicevox_model_path}",
         )
 
     if shutil.which(settings.ffmpeg_path) is None:

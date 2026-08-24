@@ -142,7 +142,7 @@ class Settings:
                 ),
             ),
             voicevox_model_path=Path(
-                os.getenv("VOICEVOX_MODEL_PATH", "./voicevox_core/models/vvms/0.vvm"),
+                os.getenv("VOICEVOX_MODEL_PATH", "./voicevox_core/models/vvms"),
             ),
             cache_size=cache_size,
             ffmpeg_path=os.getenv("FFMPEG_PATH", "ffmpeg"),
