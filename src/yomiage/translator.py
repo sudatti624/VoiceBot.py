@@ -4,6 +4,7 @@ import contextlib
 import logging
 import re
 import signal
+import unicodedata
 from collections import OrderedDict
 from collections.abc import Iterator
 
@@ -162,7 +163,7 @@ class Translator:
         self._compiled_regex_cache: OrderedDict[str, re.Pattern[str] | None] = OrderedDict()
 
     def convert(self, source_text: str, server_id: int, bot_id: int) -> str:
-        speak_text = self._full_to_half(source_text[:MAX_SOURCE_TEXT_LENGTH])
+        speak_text = self._normalize_width(source_text[:MAX_SOURCE_TEXT_LENGTH])
         speak_text, protected_replacements = self._apply_protected_server_dict(
             speak_text,
             self.database.get_server_dict(server_id, bot_id),
@@ -176,13 +177,8 @@ class Translator:
             speak_text = f"{speak_text[:MAX_SPEAK_TEXT_LENGTH]}いかりゃく"
         return speak_text.strip().replace(" ", "")
 
-    def _full_to_half(self, source: str) -> str:
-        return "".join(
-            chr(ord(character) - 0xFEE0)
-            if "\uff01" <= character <= "\uff5e"
-            else character
-            for character in source
-        )
+    def _normalize_width(self, source: str) -> str:
+        return unicodedata.normalize("NFKC", source)
 
     def _compile_regex(self, pattern: str) -> re.Pattern[str] | None:
         cached = self._compiled_regex_cache.get(pattern)

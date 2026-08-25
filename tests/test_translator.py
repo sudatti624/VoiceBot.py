@@ -84,6 +84,10 @@ def test_romaji_conversion_for_unregistered_word(translator: Translator) -> None
     assert translator.convert("ohayo", SERVER_ID, BOT_ID) == "おはよ"
 
 
+def test_half_width_kana_is_normalized(translator: Translator) -> None:
+    assert translator.convert("ﾊﾝｶｸｶﾅ ｶﾞ", SERVER_ID, BOT_ID) == "ハンカクカナガ"
+
+
 def test_english_dictionary_and_romaji_combine_in_one_sentence(
     translator: Translator,
     database: Database,
@@ -126,6 +130,10 @@ def test_emoji_only_text_is_not_speakable(translator: Translator) -> None:
 
 def test_normal_text_is_speakable(translator: Translator) -> None:
     assert has_speakable_content(translator.convert("あ-い", SERVER_ID, BOT_ID))
+
+
+def test_half_width_kana_only_text_is_speakable(translator: Translator) -> None:
+    assert has_speakable_content(translator.convert("ﾃｽﾄ", SERVER_ID, BOT_ID))
 
 
 def test_invalid_regex_entry_is_skipped_without_crashing(
