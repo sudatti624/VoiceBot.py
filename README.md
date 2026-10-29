@@ -4,6 +4,14 @@ VOICEVOX COREでDiscordのテキストチャンネル投稿をボイスチャン
 [`tanetakumi/voicebot`](https://github.com/tanetakumi/voicebot) のRust実装を参考に、
 単体で動かしやすい構成へ移植しています。
 
+- [初回セットアップ](#セットアップ)
+- [更新と再起動](#更新と再起動)
+- [起動時のトラブルシューティング](#起動時のトラブルシューティング)
+- [音声合成モード](#音声合成モード)
+- [Discord コマンド](#discord-コマンド)
+- [読み上げの制限](#読み上げの制限)
+- [環境変数](#環境変数)
+
 ## 機能
 
 - `/join`: 実行者がいるボイスチャンネルへ参加
@@ -13,7 +21,7 @@ VOICEVOX COREでDiscordのテキストチャンネル投稿をボイスチャン
 - `/s`: `/skip` の短縮版
 - `/dict add|remove|list`: サーバー辞書の管理
 - `/voice list|license`: VOICEVOXのキャラクター名、話者ID、クレジット表記を表示
-- `/settings show|mention|read_name|default_speaker|user_speaker|clear_user_speaker`: 読み上げ設定
+- `/settings show|mention|read_name|serverchat|default_speaker|user_speaker|clear_user_speaker`: 読み上げ設定
 - 参加時のテキストチャンネルに投稿されたメッセージをVOICEVOX COREで読み上げ
 - VC接続時にBot自身をSelf Deafにして、他ユーザーの音声を受信しない
 - 接続中のVCから人が全員退出したら自動退出
@@ -46,6 +54,7 @@ Discord Developer Portalでは、Botに次の権限とIntentを付けてくだ�
 - `MESSAGE CONTENT INTENT`
 - `View Channels`
 - `Send Messages`
+- `Embed Links`（`/voice list`・`/voice license` の埋め込み表示に必要）
 - `Read Message History`
 - `Connect`
 - `Speak`
@@ -58,23 +67,101 @@ VOICEVOX CORE はPyPIだけでは完結しません。このプロジェクト�
 
 ## セットアップ
 
-1. 依存関係をインストールします。
+以下は **Ubuntu / Linux x86_64・CPU実行** の手順です。
+初回導入は上から順番に実行してください。すでに導入済みの場合は[更新と再起動](#更新と再起動)を参照してください。
+
+### 1. OSのパッケージとuvを準備する
 
 ```bash
-uv sync
+sudo apt update
+sudo apt install -y git curl ca-certificates ffmpeg libopus0 unzip jq nano
+curl -LsSf https://astral.sh/uv/install.sh | sh
 ```
 
-2. 環境変数ファイルを作ります。
+uvのインストーラーが表示する案内に従ってシェルを開き直し、次を確認してください。
+インストール方法の詳細は[uv公式ドキュメント](https://docs.astral.sh/uv/getting-started/installation/)を参照してください。
+
+```bash
+uv --version
+ffmpeg -version
+```
+
+### 2. プロジェクトを取得して作業場所へ移動する
+
+新規導入では、Botを置きたい親フォルダーで次を実行します。
+
+```bash
+git clone https://github.com/sudatti624/VoiceBot.py.git
+cd VoiceBot.py
+```
+
+以降のコマンドは、`pyproject.toml` と `README.md` がある **プロジェクト直下** で実行します。
+すでにclone済みの場合は、cloneせずにそのディレクトリへ移動します（パスは実際の配置に置き換えてください）。
+
+```bash
+cd /path/to/VoiceBot.py
+pwd
+ls pyproject.toml README.md
+```
+
+### 3. Pythonと依存関係をインストールする
+
+```bash
+uv python install 3.12
+uv sync --locked
+```
+
+`.venv/` はuvが作成します。手動で仮想環境を有効化する必要はありません。
+**`uv sync` で入るのはPython側の依存関係です。次のRuntime・辞書・モデルの取得も必要です。**
+
+### 4. VOICEVOXのRuntime・辞書・モデルを取得する
+
+[公式ダウンローダー](https://github.com/VOICEVOX/voicevox_core/blob/0.17.1/docs/guide/user/downloader.md)を使います。
+モデルの利用条件は、ダウンロードしたファイル内のREADMEも確認してください。
+
+```bash
+curl -fL https://github.com/VOICEVOX/voicevox_core/releases/download/0.17.1/download-linux-x64 -o download
+chmod +x download
+./download --only onnxruntime --devices cpu
+./download --only dict
+./download --only models --models-version 0.17.0
+```
+
+標準の展開先はプロジェクト直下の `voicevox_core/` です。取得後、実際の配置を確認します。
+
+```bash
+find "$PWD/voicevox_core" -name 'libvoicevox_onnxruntime.so*' -type f
+find "$PWD/voicevox_core/dict" -maxdepth 1 -type d
+find "$PWD/voicevox_core/models" -name '*.vvm' -type f
+```
+
+**ONNX Runtimeのファイル名に含まれるバージョン番号は、取得したものによって異なります。**
+`.env.example` の `1.17.3` をそのまま使わず、上のコマンドで表示された実在するファイルのパスを設定してください。
+
+### 5. Discordと環境変数を設定する
+
+Discord Developer PortalでBotを作成し、BotページでTokenを取得して
+`MESSAGE CONTENT INTENT` を有効にします。OAuth2の招待URLでは `bot` と
+`applications.commands` のスコープを指定し、[必要なもの](#必要なもの)に記載した権限でサーバーへ招待してください。
+
+初回だけ環境変数ファイルを作ります。既存の `.env` がある場合は、このコピーを省略してください。
 
 ```bash
 cp .env.example .env
 ```
 
-3. `.env` を編集します。最低限、次の値を設定してください。
+`.env` をエディターで開き、最低限、次の値を設定します。
+下のRuntimeパスは **1.23.2が見つかった場合の例** です。手順4で確認したパスに置き換えてください。
+
+```bash
+nano .env
+```
+
+nanoでは `Ctrl+O` → Enterで保存し、`Ctrl+X` で終了します。
 
 ```env
 DISCORD_BOT_TOKEN=あなたのDiscord Botトークン
-VOICEVOX_ONNXRUNTIME_PATH=./voicevox_core/onnxruntime/lib/libvoicevox_onnxruntime.so.1.17.3
+VOICEVOX_ONNXRUNTIME_PATH=./voicevox_core/onnxruntime/lib/libvoicevox_onnxruntime.so.1.23.2
 OPEN_JTALK_DIC_DIR=./voicevox_core/dict/open_jtalk_dic_utf_8-1.11
 VOICEVOX_MODEL_PATH=./voicevox_core/models/vvms
 VOICEVOX_MODEL_EXCLUDE=
@@ -82,21 +169,102 @@ VOICEVOX_ACCELERATION_MODE=CPU
 VOICEVOX_SYNTHESIS_MODE=normal
 ```
 
-4. Botを起動します。
+最初は `normal` で起動を確認してください。ストリーミングを使う場合は、
+[音声合成モード](#音声合成モード)に従ってCORE・モデル・話者IDの対応を確認してから変更します。
+Tokenを含む `.env` はGitに登録しないでください。
+
+### 6. 起動して読み上げを確認する
 
 ```bash
 uv run yomiage
 ```
 
-起動後、DiscordでBotをメンションするか `/join` を実行すると、実行者が参加しているVCへ接続します。
+`VOICEVOX CORE initialized` に続いて `Bot ready:` が表示されれば、Discordへの接続まで完了しています。
+Discordで自分がVCに入り、読み上げたいテキストチャンネルでBotをメンションするか `/join` を実行します。
+同じテキストチャンネルへ投稿して音声が出ることを確認してください。
+
+フォアグラウンド実行は `Ctrl+C` で停止します。常時稼働にsystemdなどを使う場合も、
+まず上の手順で起動を確認し、サービスの作業ディレクトリをプロジェクト直下に設定してください。
+
+## 更新と再起動
+
+稼働中のBotを停止してから、プロジェクト直下で実行します。
+手動起動の場合は `Ctrl+C`、サービスの場合はそのサービスの停止操作を使ってください。
+
+```bash
+git pull --ff-only
+uv sync --locked
+uv run yomiage
+```
+
+サービス運用では、最後の `uv run yomiage` の代わりに既存のサービスを起動してください。
+二重起動は避けてください。`git pull` がローカル変更や履歴の分岐で止まった場合は、
+表示された内容を確認し、変更を保存・整理してから再実行します。
+
+既存の `.env` は維持し、追加された設定は `.env.example` と見比べて反映します。
+Runtime・辞書・モデルは `git pull` や `uv sync` では更新されません。
+それらも更新した場合は、実際のファイル名・配置と `.env` のパスを再確認してください。
+
+## 起動時のトラブルシューティング
+
+### `VOICEVOX_ONNXRUNTIME_PATH must be a file` と表示される
+
+設定されたパスにRuntimeがありません。プロジェクト直下で次を実行します。
+
+```bash
+pwd
+find "$PWD/voicevox_core" -name 'libvoicevox_onnxruntime.so*' -type f
+```
+
+ファイルが見つかったら、表示された絶対パスを `.env` の `VOICEVOX_ONNXRUNTIME_PATH` に設定し、
+Botを再起動してください。何も見つからない場合は、セットアップ手順4でダウンローダーを用意し、
+`./download --only onnxruntime --devices cpu` で取得してから再確認します。
+
+相対パスはBotを起動した作業ディレクトリを基準に解決されます。
+手動起動時はプロジェクト直下へ `cd` し、サービス運用時は作業ディレクトリの設定も確認してください。
+
+### 辞書またはモデルが見つからない
+
+`OPEN_JTALK_DIC_DIR must be a directory` は辞書ディレクトリ、
+`VOICEVOX_MODEL_PATH must be a .vvm file or a directory ...` はモデルの配置を確認します。
+セットアップ手順4の `find` で実在する場所を確認し、`.env` の該当パスを設定してください。
+未取得なら `./download --only dict` または `./download --only models --models-version 0.17.0` を実行します。
+
+### `cannot import name 'SynthesisStream'` と表示される
+
+古いBotコードが、インストール済みCOREにないエクスポートを必須インポートしている可能性があります。
+[更新と再起動](#更新と再起動)の手順でコードとPython依存関係をそろえてください。
+現在のコードではこのエクスポートを必須にせず、COREにストリーミングAPIがない場合は
+`normal` / `auto` で通常合成を利用できます。`streaming` には対応COREと新形式VVMが必要です。
+
+### Token・Intent・ffmpegのエラー
+
+- `DISCORD_BOT_TOKEN is required`: プロジェクト直下の `.env` にTokenを設定してください。
+- Discordの認証失敗: Tokenが有効か確認し、再発行した場合は `.env` を更新して再起動してください。
+- Privileged Intentのエラー: Developer Portalで `MESSAGE CONTENT INTENT` を有効にしてください。
+- `ffmpeg executable not found`: `ffmpeg -version` を確認し、未導入なら `sudo apt install ffmpeg` を実行してください。
+  導入済みなのにPATHが通らない場合は、`which ffmpeg` で調べた絶対パスを `.env` の `FFMPEG_PATH` に設定します。
+
+`audioop` の非推奨警告はPython 3.12で `discord.py` を読み込む際に出ることがあります。
+この警告だけでは起動失敗ではありません。停止した場合は、その後の例外と起動ログを確認してください。
+
+### 「ボイスチャンネルに接続できませんでした」と返信される
+
+BotがVCへの接続に失敗しています。ログの `Failed to join voice channel` に続く例外を確認してください。
+よくある原因は次のとおりです。
+
+- BotにそのVCの `Connect`・`Speak` 権限がない
+- VCの人数上限に達している
+- `libopus0` が入っていない（`sudo apt install libopus0`）
+- ネットワークの問題で接続がタイムアウトした
 
 ## VOICEVOX CORE の配置例
 
-`.env.example` のデフォルト値は、リポジトリ直下に `voicevox_core/` を置く想定です。
+リポジトリ直下に `voicevox_core/` を置く場合の例です。Runtimeのファイル名は実物に合わせてください。
 
 ```text
 voicevox_core/
-├── onnxruntime/lib/libvoicevox_onnxruntime.so.1.17.3
+├── onnxruntime/lib/libvoicevox_onnxruntime.so.1.23.2
 ├── dict/open_jtalk_dic_utf_8-1.11/
 └── models/vvms/0.vvm
 ```
@@ -155,7 +323,7 @@ VOICEVOX_SYNTHESIS_MODE=auto
 各モードの細かな動作は次のとおりです。
 
 - **`streaming`**:
-  - 起動時に `VOICEVOX_SPEAKER_ID` が `streaming_talk` スタイルかどうかを確認します。
+  - 起動時にCOREのストリーミングAPIと、`VOICEVOX_SPEAKER_ID` が `streaming_talk` スタイルかどうかを確認します。
     対応していない場合はエラーになり、起動しません。
   - ユーザーが非対応の話者IDを設定している場合は、警告ログを出したうえで通常合成で読み上げます。
   - 合成中にエラーが起きた場合は、そのメッセージを読み上げずにスキップします（再試行はしません）。
@@ -217,14 +385,17 @@ INFO yomiage.perf: speech_perf guild=123 mode=auto path=streaming cache_hit=fals
 ### トラブルシューティング
 
 - **`VOICEVOX_SYNTHESIS_MODE=streaming requires ...` と表示されて起動しない**:
-  デフォルト話者が新形式VVMの `streaming_talk` スタイルではありません。次のいずれかで対処してください。
+  COREにストリーミングAPIがないか、デフォルト話者が新形式VVMの `streaming_talk` スタイルではありません。
+  次のいずれかで対処してください。
+  - `uv sync --locked` で対応するCOREのPython wheelをインストールする
   - 新形式VVMを導入する
   - 起動ログの `Streaming-capable VOICEVOX style IDs` にある話者IDを `VOICEVOX_SPEAKER_ID` に指定する
   - `auto` を使う
 - **`VOICEVOX_SYNTHESIS_MODE must be one of ...` と表示される**: 値は `normal`、`streaming`、
   `auto` のいずれかにしてください。
 - **`auto` にしてもストリーミングにならない**: 性能ログの `path` を確認してください。
-  - `path=normal` の場合: そのスタイルが `streaming_talk` ではありません（旧形式VVMの可能性があります）。
+  - `path=normal` の場合: COREにストリーミングAPIがないか、そのスタイルが `streaming_talk` ではありません。
+    起動時の警告ログと、`Streaming-capable VOICEVOX style IDs` を確認してください。
   - `path=streaming->normal` の場合: ストリーミングに失敗しています。直前の警告ログを確認してください。
   - 3回続けて失敗したスタイルは、再起動まで通常合成に固定されます。
 - **音が途切れる、または `underruns` が増える**: 合成が再生に追いついていません。
@@ -269,6 +440,27 @@ INFO yomiage.perf: speech_perf guild=123 mode=auto path=streaming cache_hit=fals
 
 `/voice` の一覧はページ移動ボタン付きで1ページずつ表示します。ボタンは1分後に消えます。
 
+### サーバー辞書
+
+- 1サーバーあたり最大27件まで登録できます。単語は120文字以内、読みは80文字以内です。
+- `regex:true` で正規表現として登録できます。`(1)`、`(2)` と書くと、読みの中にキャプチャグループの内容を埋め込めます。
+- `(a+)+` のように処理が極端に重くなりうる正規表現（入れ子の量指定子）は登録できません。
+  Linuxでは、1件の正規表現置換が0.5秒を超えるとその辞書項目をスキップします。
+- `/dict list` は、Discordの1メッセージの文字数上限を超える場合は複数のメッセージに分けて表示します。
+
+Botの返信には辞書の単語などユーザーの入力が含まれますが、`@everyone`・`@here`・ロール・ユーザーへの
+メンション通知は発生しません。
+
+## 読み上げの制限
+
+荒らしや長文で読み上げが詰まらないよう、次の制限があります。
+
+- **レート制限**: サーバーごとに `MAX_TOKENS`（デフォルト400）個のトークンを持ち、1投稿で文字数分
+  （最大80）を消費します。10秒ごとに50トークン回復します。足りない場合は回復までの目安を返信し、その投稿は読みません。
+- **読み上げ待ち**: サーバーごとに最大50件です。超えた投稿はスキップし、その旨を返信します。
+- **文字数**: 投稿は先頭512文字だけを変換し、変換後に80文字を超えた部分は「いかりゃく」と読みます。
+- 絵文字など読める文字を含まない投稿は読み上げません。
+
 ## 読み上げ設定
 
 - `/settings show`: 現在の設定を表示
@@ -288,7 +480,7 @@ INFO yomiage.perf: speech_perf guild=123 mode=auto path=streaming cache_hit=fals
 
 ```bash
 uv run ruff check .
-uv run basedpyright src
+uv run basedpyright
 uv run pytest
 uv build
 ```
@@ -305,7 +497,9 @@ VOICEVOX CORE本体はGit管理対象外です。
 - `test_config.py`: 環境変数の検証ロジック
 - `test_database.py`: SQLiteへの読み書きとキャッシュの整合性
 - `test_session.py`: ボイスセッションの生成・再接続時の後始末・終了処理
-- `test_bot_voice.py`: VC接続時のSelf Deaf設定、`/skip` による合成中の読み上げのキャンセル
+- `test_bot_voice.py`: VC接続時のSelf Deaf設定、接続失敗時の返信、メンション通知の抑止、投稿テキストの整形、`/skip` による合成中の読み上げのキャンセル
+- `test_commands.py`: 返信に含めるユーザー入力のエスケープ、`/dict list` のメッセージ分割、`/voice` の埋め込みページ
+- `test_voice_catalog.py`: 話者ID一覧とクレジット表記のデータ、埋め込みのフィールド数上限
 - `test_audio_stream.py`: PCM変換（48kHz・ステレオ化）、チャンク境界、20msフレーム分割、プリバッファ、アンダーラン、バックプレッシャー
 - `test_streaming_session.py`: `normal` / `streaming` / `auto` の各モード、フォールバック、二重読み上げの防止、`/skip`・`/leave`・再接続、複数サーバーでの同時再生
 - `test_voicevox_streaming.py`: 途中までしか合成しなかった音声をキャッシュしないこと、キャッシュキー、非対応VVMの扱い、起動時のモード検証
@@ -322,18 +516,19 @@ uv run pytest
 ## 環境変数
 
 - `DISCORD_BOT_TOKEN`: Discord Bot token
-- `BOT_ID`: 辞書を分けたい場合のbot ID。デフォルトは `0`
+- `BOT_ID`: 同じDBを複数のBotで共有するとき、辞書と設定を分けるためのID。デフォルトは `0`
 - `YOMIAGE_DB`: SQLite DBのパス。デフォルトは `yomiage.sqlite3`
-- `MAX_TOKENS`: サーバーごとの読み上げトークン上限。デフォルトは `400`
-- `VOICEVOX_SPEAKER_ID`: VOICEVOX話者ID。デフォルトは `3`
-- `VOICEVOX_SPEED`: 話速。デフォルトは `1.2`
+- `MAX_TOKENS`: サーバーごとの読み上げトークン上限（1〜100000）。デフォルトは `400`。[読み上げの制限](#読み上げの制限)を参照
+- `VOICEVOX_SPEAKER_ID`: デフォルトの話者ID。デフォルトは `3`。読み込んだモデルにないIDだと起動しません
+- `VOICEVOX_SPEED`: 話速（0より大きく10以下）。デフォルトは `1.2`
 - `VOICEVOX_ONNXRUNTIME_PATH`: `libvoicevox_onnxruntime.so...` のパス（ONNX Runtime 1.17〜1.29に対応。推奨は1.23.2）
 - `OPEN_JTALK_DIC_DIR`: OpenJTalk辞書ディレクトリ
 - `VOICEVOX_MODEL_PATH`: `.vvm` モデルファイル、または `.vvm` を含むディレクトリ
 - `VOICEVOX_MODEL_EXCLUDE`: 読み込まない `.vvm`。例: `4.vvm`、複数なら `4.vvm,9.vvm`
 - `VOICEVOX_ACCELERATION_MODE`: `CPU`, `AUTO`, `GPU` のいずれか。デフォルトは `CPU`
-- `VOICEVOX_CACHE_SIZE`: 音声合成キャッシュ数。デフォルトは `100`
-- `FFMPEG_PATH`: ffmpegコマンド。デフォルトは `ffmpeg`
+- `VOICEVOX_CACHE_SIZE`: 音声合成キャッシュ数（0〜100000、`0` で無効）。デフォルトは `100`
+- `FFMPEG_PATH`: ffmpegコマンド、または実行ファイルの絶対パス。デフォルトは `ffmpeg`。
+  systemdなどでPATHが通らない場合は絶対パスを指定してください
 - `VOICEVOX_SYNTHESIS_MODE`: `normal`, `streaming`, `auto` のいずれか。デフォルトは `normal`。[音声合成モード](#音声合成モード)を参照
 - `VOICEVOX_STREAM_SEGMENT_SECONDS`: ストリーミングで1回に合成する長さ（秒）。デフォルトは `0.3`
 - `VOICEVOX_STREAM_BUFFER_SECONDS`: ストリーミングで再生を始める前に貯める長さ（秒）。デフォルトは `0.5`
