@@ -11,7 +11,6 @@ from yomiage.voicevox import (
     discover_voice_model_paths,
     validate_environment,
     validate_speaker_id,
-    validate_synthesis_mode,
 )
 
 LOGGER = logging.getLogger(__name__)
@@ -44,13 +43,6 @@ def main() -> None:
             settings.open_jtalk_dict_dir,
             settings.voicevox_model_path,
         )
-        LOGGER.info(
-            "VOICEVOX synthesis: mode=%s stream_segment=%ss stream_buffer=%ss performance_log=%s",
-            settings.synthesis_mode,
-            settings.stream_segment_seconds,
-            settings.stream_buffer_seconds,
-            settings.performance_log,
-        )
         validate_environment(settings)
     except (ConfigError, VoicevoxConfigError):
         LOGGER.exception("Invalid configuration, refusing to start")
@@ -76,11 +68,6 @@ def main() -> None:
         validate_speaker_id(settings, bot.synthesizer)
     except VoicevoxConfigError:
         LOGGER.exception("Invalid VOICEVOX_SPEAKER_ID, refusing to start")
-        raise
-    try:
-        validate_synthesis_mode(settings, bot.synthesizer)
-    except VoicevoxConfigError:
-        LOGGER.exception("Invalid VOICEVOX_SYNTHESIS_MODE, refusing to start")
         raise
     LOGGER.info(
         "VOICEVOX CORE initialized with %s available style ID(s)",

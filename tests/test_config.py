@@ -29,10 +29,6 @@ def _isolated_env(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
         "VOICEVOX_ACCELERATION_MODE",
         "VOICEVOX_CACHE_SIZE",
         "FFMPEG_PATH",
-        "VOICEVOX_SYNTHESIS_MODE",
-        "VOICEVOX_STREAM_SEGMENT_SECONDS",
-        "VOICEVOX_STREAM_BUFFER_SECONDS",
-        "VOICEVOX_PERFORMANCE_LOG",
         "VOICEVOX_CPU_NUM_THREADS",
     ):
         monkeypatch.delenv(name, raising=False)
@@ -230,67 +226,6 @@ def test_voicevox_model_path_can_be_directory(
     validate_environment(Settings.from_env())
 
 
-def test_synthesis_settings_defaults() -> None:
-    settings = Settings.from_env()
-    assert settings.synthesis_mode == "normal"
-    assert settings.stream_segment_seconds == 0.3
-    assert settings.stream_buffer_seconds == 0.5
-    assert settings.performance_log is False
-
-
-@pytest.mark.parametrize(
-    ("raw", "expected"),
-    [("normal", "normal"), ("STREAMING", "streaming"), (" Auto ", "auto")],
-)
-def test_synthesis_mode_is_case_insensitive(
-    monkeypatch: pytest.MonkeyPatch,
-    raw: str,
-    expected: str,
-) -> None:
-    monkeypatch.setenv("VOICEVOX_SYNTHESIS_MODE", raw)
-    assert Settings.from_env().synthesis_mode == expected
-
-
-def test_invalid_synthesis_mode_raises(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("VOICEVOX_SYNTHESIS_MODE", "stream")
-    with pytest.raises(ConfigError, match="VOICEVOX_SYNTHESIS_MODE must be one of"):
-        Settings.from_env()
-
-
-def test_streaming_settings_from_env(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("VOICEVOX_STREAM_SEGMENT_SECONDS", "0.2")
-    monkeypatch.setenv("VOICEVOX_STREAM_BUFFER_SECONDS", "0")
-    monkeypatch.setenv("VOICEVOX_PERFORMANCE_LOG", "TRUE")
-    settings = Settings.from_env()
-    assert settings.stream_segment_seconds == 0.2
-    assert settings.stream_buffer_seconds == 0.0
-    assert settings.performance_log is True
-
-
-@pytest.mark.parametrize("raw", ["0", "-0.1", "0.005", "11", "fast"])
-def test_invalid_stream_segment_seconds_raises(monkeypatch: pytest.MonkeyPatch, raw: str) -> None:
-    monkeypatch.setenv("VOICEVOX_STREAM_SEGMENT_SECONDS", raw)
-    with pytest.raises(ConfigError, match="VOICEVOX_STREAM_SEGMENT_SECONDS"):
-        Settings.from_env()
-
-
-@pytest.mark.parametrize("raw", ["-0.1", "11", "lots"])
-def test_invalid_stream_buffer_seconds_raises(monkeypatch: pytest.MonkeyPatch, raw: str) -> None:
-    monkeypatch.setenv("VOICEVOX_STREAM_BUFFER_SECONDS", raw)
-    with pytest.raises(ConfigError, match="VOICEVOX_STREAM_BUFFER_SECONDS"):
-        Settings.from_env()
-
-
-@pytest.mark.parametrize(("raw", "expected"), [("1", True), ("on", True), ("No", False)])
-def test_performance_log_accepts_boolean_words(
-    monkeypatch: pytest.MonkeyPatch,
-    raw: str,
-    expected: bool,
-) -> None:
-    monkeypatch.setenv("VOICEVOX_PERFORMANCE_LOG", raw)
-    assert Settings.from_env().performance_log is expected
-
-
 def test_cpu_num_threads_defaults_to_four() -> None:
     assert Settings.from_env().cpu_num_threads == 4
 
@@ -309,10 +244,4 @@ def test_cpu_num_threads_from_env(
 def test_invalid_cpu_num_threads_raises(monkeypatch: pytest.MonkeyPatch, raw: str) -> None:
     monkeypatch.setenv("VOICEVOX_CPU_NUM_THREADS", raw)
     with pytest.raises(ConfigError, match="VOICEVOX_CPU_NUM_THREADS"):
-        Settings.from_env()
-
-
-def test_invalid_performance_log_raises(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("VOICEVOX_PERFORMANCE_LOG", "maybe")
-    with pytest.raises(ConfigError, match="VOICEVOX_PERFORMANCE_LOG"):
         Settings.from_env()

@@ -254,8 +254,6 @@ class YomiageBot(discord.Client):
         voice_client = guild.voice_client
         if not isinstance(voice_client, discord.VoiceClient):
             return False
-        # Cancels in-flight synthesis (and streaming buffers) as well as playback.
-        self.session_manager.skip(guild.id)
         voice_client.stop()
         return True
 
