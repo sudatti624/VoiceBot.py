@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 from pathlib import Path
 
+import discord
 import pytest
 
 import yomiage.bot as bot_module
@@ -286,3 +287,41 @@ def test_prepare_message_replaces_custom_emoji_with_name(tmp_path: Path) -> None
         assert bot._prepare_message_text(message) == "DiscordUser、いいね kusa party"
     finally:
         asyncio.run(bot.close())
+
+
+class StoppableVoiceClient(discord.VoiceClient):
+    def __init__(self) -> None:  # pyright: ignore[reportMissingSuperCall]
+        self.stopped = 0
+
+    def stop(self) -> None:
+        self.stopped += 1
+
+
+def test_skip_cancels_in_flight_synthesis(tmp_path: Path) -> None:
+    """``/skip`` must also cancel an item that is still synthesizing (nothing playing yet)."""
+
+    async def scenario() -> None:
+        bot = make_bot(tmp_path)
+        voice_client = StoppableVoiceClient()
+        guild = FakeGuild(1, voice_client)
+        try:
+            session = await bot.session_manager.open(guild.id, 10, 20)
+            synthesizing = asyncio.Event()
+
+            async def slow_item() -> None:
+                synthesizing.set()
+                await asyncio.sleep(60)
+
+            session.current = asyncio.create_task(slow_item())
+            await synthesizing.wait()
+
+            assert bot._skip_guild(guild)  # pyright: ignore[reportArgumentType]
+            with pytest.raises(asyncio.CancelledError):
+                await session.current
+            assert voice_client.stopped == 1
+            assert not bot._skip_guild(FakeGuild(2))  # pyright: ignore[reportArgumentType]
+        finally:
+            await bot.session_manager.close_all()
+            bot.database.close()
+
+    asyncio.run(scenario())

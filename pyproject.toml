@@ -8,7 +8,9 @@ requires-python = ">=3.12,<3.14"
 dependencies = [
     "discord.py[voice]",
     "python-dotenv>=1.2.1",
-    "voicevox-core @ https://github.com/VOICEVOX/voicevox_core/releases/download/0.16.3/voicevox_core-0.16.3-cp310-abi3-manylinux_2_34_x86_64.whl",
+    "voicevox-core @ https://github.com/VOICEVOX/voicevox_core/releases/download/0.17.1/voicevox_core-0.17.1-cp310-abi3-manylinux_2_34_x86_64.whl ; sys_platform == 'linux' and platform_machine == 'x86_64'",
+    # Development/test only: lets `uv sync` and the test suite run on Windows.
+    "voicevox-core @ https://github.com/VOICEVOX/voicevox_core/releases/download/0.17.1/voicevox_core-0.17.1-cp310-abi3-win_amd64.whl ; sys_platform == 'win32' and platform_machine == 'AMD64'",
 ]
 
 [project.urls]

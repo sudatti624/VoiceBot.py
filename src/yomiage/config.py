@@ -22,6 +22,19 @@ VoicevoxAccelerationMode = Literal["AUTO", "CPU", "GPU"]
 VOICEVOX_ACCELERATION_MODES: frozenset[VoicevoxAccelerationMode] = frozenset(
     {"AUTO", "CPU", "GPU"},
 )
+VoicevoxSynthesisMode = Literal["normal", "streaming", "auto"]
+VOICEVOX_SYNTHESIS_MODES: frozenset[VoicevoxSynthesisMode] = frozenset(
+    {"normal", "streaming", "auto"},
+)
+# voicevox_core.FRAME_RATE. Duplicated so configuration can be validated without
+# importing the native extension. ``streaming_synthesis`` requires
+# ``segment_length * FRAME_RATE > 0.5``.
+VOICEVOX_FRAME_RATE = 93.75
+VOICEVOX_STREAM_SEGMENT_SECONDS_LOWER_BOUND = 0.5 / VOICEVOX_FRAME_RATE
+VOICEVOX_STREAM_SEGMENT_SECONDS_UPPER_BOUND = 10.0
+VOICEVOX_STREAM_BUFFER_SECONDS_UPPER_BOUND = 10.0
+_TRUE_VALUES = frozenset({"1", "true", "yes", "on"})
+_FALSE_VALUES = frozenset({"0", "false", "no", "off"})
 
 
 class ConfigError(RuntimeError):
@@ -60,6 +73,26 @@ def _get_voicevox_acceleration_mode() -> VoicevoxAccelerationMode:
     return raw
 
 
+def _get_voicevox_synthesis_mode() -> VoicevoxSynthesisMode:
+    raw = os.getenv("VOICEVOX_SYNTHESIS_MODE", "normal").strip().lower()
+    if raw not in VOICEVOX_SYNTHESIS_MODES:
+        allowed = ", ".join(sorted(VOICEVOX_SYNTHESIS_MODES))
+        raise ConfigError(f"VOICEVOX_SYNTHESIS_MODE must be one of {allowed}, got {raw!r}")
+    return raw
+
+
+def _get_bool(name: str, *, default: bool) -> bool:
+    raw = os.getenv(name)
+    if raw is None:
+        return default
+    value = raw.strip().lower()
+    if value in _TRUE_VALUES:
+        return True
+    if value in _FALSE_VALUES:
+        return False
+    raise ConfigError(f"{name} must be true or false, got {raw!r}")
+
+
 def _get_csv_values(name: str) -> tuple[str, ...]:
     raw = os.getenv(name, "")
     return tuple(value.strip() for value in raw.split(",") if value.strip())
@@ -96,6 +129,10 @@ class Settings:
     voicevox_acceleration_mode: VoicevoxAccelerationMode
     cache_size: int
     ffmpeg_path: str
+    synthesis_mode: VoicevoxSynthesisMode = "normal"
+    stream_segment_seconds: float = 0.3
+    stream_buffer_seconds: float = 0.5
+    performance_log: bool = False
 
     @classmethod
     def from_env(cls) -> Settings:
@@ -142,6 +179,22 @@ class Settings:
             maximum=VOICEVOX_CACHE_SIZE_UPPER_BOUND,
         )
 
+        stream_segment_seconds = _get_float("VOICEVOX_STREAM_SEGMENT_SECONDS", 0.3)
+        _require_range(
+            "VOICEVOX_STREAM_SEGMENT_SECONDS",
+            stream_segment_seconds,
+            exclusive_minimum=VOICEVOX_STREAM_SEGMENT_SECONDS_LOWER_BOUND,
+            maximum=VOICEVOX_STREAM_SEGMENT_SECONDS_UPPER_BOUND,
+        )
+
+        stream_buffer_seconds = _get_float("VOICEVOX_STREAM_BUFFER_SECONDS", 0.5)
+        _require_range(
+            "VOICEVOX_STREAM_BUFFER_SECONDS",
+            stream_buffer_seconds,
+            minimum=0,
+            maximum=VOICEVOX_STREAM_BUFFER_SECONDS_UPPER_BOUND,
+        )
+
         return cls(
             discord_token=token,
             bot_id=bot_id,
@@ -168,4 +221,8 @@ class Settings:
             voicevox_acceleration_mode=_get_voicevox_acceleration_mode(),
             cache_size=cache_size,
             ffmpeg_path=os.getenv("FFMPEG_PATH", "ffmpeg"),
+            synthesis_mode=_get_voicevox_synthesis_mode(),
+            stream_segment_seconds=stream_segment_seconds,
+            stream_buffer_seconds=stream_buffer_seconds,
+            performance_log=_get_bool("VOICEVOX_PERFORMANCE_LOG", default=False),
         )
