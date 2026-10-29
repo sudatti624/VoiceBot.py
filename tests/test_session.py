@@ -1,9 +1,12 @@
 from __future__ import annotations
 
 import asyncio
+from collections.abc import Iterator
 from pathlib import Path
 from types import MethodType
+from typing import cast
 
+import discord
 import pytest
 
 from yomiage.config import Settings
@@ -54,7 +57,7 @@ def _make_settings(tmp_path: Path) -> Settings:
 
 
 @pytest.fixture
-def session_manager(tmp_path: Path) -> SessionManager:
+def session_manager(tmp_path: Path) -> Iterator[SessionManager]:
     settings = _make_settings(tmp_path)
     database = Database(settings.database_path)
     translator = Translator(database)
@@ -68,7 +71,7 @@ def test_rejoin_shuts_down_previous_worker(session_manager: SessionManager) -> N
         guild = FakeGuild(guild_id=1)
 
         session1 = await session_manager.open(guild.id, voice_channel_id=10, text_channel_id=20)
-        session_manager.ensure_worker(guild, session1)
+        session_manager.ensure_worker(cast("discord.Guild", guild), session1)
         worker1 = session1.worker
         assert worker1 is not None
         await asyncio.sleep(0)
@@ -80,7 +83,7 @@ def test_rejoin_shuts_down_previous_worker(session_manager: SessionManager) -> N
         assert worker1.done()
         assert session2 is not session1
         assert session_manager.get(guild.id) is session2
-        assert session_manager.get(guild.id).text_channel_id == 21
+        assert session2.text_channel_id == 21
 
     asyncio.run(scenario())
 
@@ -103,7 +106,7 @@ def test_worker_continues_after_item_error(session_manager: SessionManager) -> N
         session_manager._speak_one = MethodType(speak_one, session_manager)
         assert session_manager.enqueue(session, SpeechItem(text="fail", speaker_id=3))
         assert session_manager.enqueue(session, SpeechItem(text="next", speaker_id=3))
-        session_manager.ensure_worker(guild, session)
+        session_manager.ensure_worker(cast("discord.Guild", guild), session)
 
         await asyncio.wait_for(session.queue.join(), timeout=1.0)
 
@@ -120,7 +123,7 @@ def test_close_cancels_worker_and_drains_queue(session_manager: SessionManager) 
         guild = FakeGuild(guild_id=2)
         session = await session_manager.open(guild.id, voice_channel_id=10, text_channel_id=20)
         session_manager.enqueue(session, SpeechItem(text="hello", speaker_id=3))
-        session_manager.ensure_worker(guild, session)
+        session_manager.ensure_worker(cast("discord.Guild", guild), session)
         worker = session.worker
         assert worker is not None
         await asyncio.sleep(0)
@@ -140,8 +143,8 @@ def test_close_all_shuts_down_every_guild(session_manager: SessionManager) -> No
         guild_b = FakeGuild(guild_id=2)
         session_a = await session_manager.open(guild_a.id, voice_channel_id=1, text_channel_id=1)
         session_b = await session_manager.open(guild_b.id, voice_channel_id=2, text_channel_id=2)
-        session_manager.ensure_worker(guild_a, session_a)
-        session_manager.ensure_worker(guild_b, session_b)
+        session_manager.ensure_worker(cast("discord.Guild", guild_a), session_a)
+        session_manager.ensure_worker(cast("discord.Guild", guild_b), session_b)
         worker_a = session_a.worker
         worker_b = session_b.worker
         assert worker_a is not None

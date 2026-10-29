@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections.abc import Iterator
 from pathlib import Path
 
 import pytest
@@ -12,7 +13,7 @@ BOT_ID = 0
 
 
 @pytest.fixture
-def database(tmp_path: Path) -> Database:
+def database(tmp_path: Path) -> Iterator[Database]:
     db = Database(tmp_path / "test.sqlite3")
     yield db
     db.close()

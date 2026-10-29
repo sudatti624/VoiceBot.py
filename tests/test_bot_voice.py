@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 from pathlib import Path
+from typing import cast
 
 import discord
 import pytest
@@ -129,7 +130,11 @@ def test_join_connects_with_self_deaf(tmp_path: Path) -> None:
         member = FakeMember(100, channel)
 
         try:
-            reply = await bot._join_member_voice(guild, member, text_channel_id=20)
+            reply = await bot._join_member_voice(
+                cast("discord.Guild", guild),
+                cast("discord.Member", member),
+                text_channel_id=20,
+            )
 
             assert channel.connect_kwargs is not None
             assert channel.connect_kwargs["self_deaf"] is True
@@ -155,7 +160,11 @@ def test_rejoin_move_keeps_self_deaf(
         monkeypatch.setattr(bot_module.discord, "VoiceClient", FakeVoiceClient)
 
         try:
-            reply = await bot._join_member_voice(guild, member, text_channel_id=20)
+            reply = await bot._join_member_voice(
+                cast("discord.Guild", guild),
+                cast("discord.Member", member),
+                text_channel_id=20,
+            )
 
             assert voice_client.moved_to is new_channel
             assert guild.voice_state_changes == [{"channel": new_channel, "self_deaf": True}]
@@ -167,7 +176,10 @@ def test_rejoin_move_keeps_self_deaf(
     asyncio.run(scenario())
 
 
-def test_on_message_reads_other_bot_messages(tmp_path: Path) -> None:
+def test_on_message_reads_other_bot_messages(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     async def scenario() -> None:
         bot = make_bot(tmp_path)
         guild = FakeGuild(1)
@@ -184,10 +196,10 @@ def test_on_message_reads_other_bot_messages(tmp_path: Path) -> None:
             voice_channel_id=10,
             text_channel_id=text_channel.id,
         )
-        bot.session_manager.ensure_worker = lambda _guild, _session: None
+        monkeypatch.setattr(bot.session_manager, "ensure_worker", lambda _guild, _session: None)
 
         try:
-            await bot.on_message(message)
+            await bot.on_message(cast("discord.Message", message))
 
             item = session.queue.get_nowait()
             assert item.text == "OtherBot、BOTからの通知です"
@@ -199,7 +211,10 @@ def test_on_message_reads_other_bot_messages(tmp_path: Path) -> None:
     asyncio.run(scenario())
 
 
-def test_on_message_ignores_own_messages(tmp_path: Path) -> None:
+def test_on_message_ignores_own_messages(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     async def scenario() -> None:
         bot = make_bot(tmp_path)
         guild = FakeGuild(1)
@@ -216,10 +231,10 @@ def test_on_message_ignores_own_messages(tmp_path: Path) -> None:
             voice_channel_id=10,
             text_channel_id=text_channel.id,
         )
-        bot._is_own_message = lambda _message: True
+        monkeypatch.setattr(bot, "_is_own_message", lambda _message: True)
 
         try:
-            await bot.on_message(message)
+            await bot.on_message(cast("discord.Message", message))
 
             assert session.queue.empty()
         finally:
@@ -247,7 +262,9 @@ def test_prepare_message_strips_server_chat_prefix_when_enabled(tmp_path: Path) 
     )
 
     try:
-        assert bot._prepare_message_text(message) == "DiscordUser、こんにちは"
+        assert (
+            bot._prepare_message_text(cast("discord.Message", message)) == "DiscordUser、こんにちは"
+        )
     finally:
         asyncio.run(bot.close())
 
@@ -266,7 +283,7 @@ def test_prepare_message_keeps_server_chat_prefix_when_disabled(tmp_path: Path) 
 
     try:
         expected = "DiscordUser、[world]<MinecraftUser> こんにちは"
-        assert bot._prepare_message_text(message) == expected
+        assert bot._prepare_message_text(cast("discord.Message", message)) == expected
     finally:
         asyncio.run(bot.close())
 
@@ -284,7 +301,10 @@ def test_prepare_message_replaces_custom_emoji_with_name(tmp_path: Path) -> None
     )
 
     try:
-        assert bot._prepare_message_text(message) == "DiscordUser、いいね kusa party"
+        assert (
+            bot._prepare_message_text(cast("discord.Message", message))
+            == "DiscordUser、いいね kusa party"
+        )
     finally:
         asyncio.run(bot.close())
 
