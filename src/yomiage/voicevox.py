@@ -26,7 +26,6 @@ VOICE_MODEL_GLOB = "*.vvm"
 # StyleMeta.type of styles in new-format (vvm_format_version=2) VVMs that support
 # Synthesizer.streaming_synthesis. They also support regular synthesis.
 STREAMING_STYLE_TYPE = "streaming_talk"
-VOICEVOX_CPU_NUM_THREADS = 4
 LOGGER = logging.getLogger(__name__)
 
 
@@ -237,13 +236,13 @@ class VoicevoxSynthesizer:
         LOGGER.info(
             "Creating VOICEVOX synthesizer: acceleration=%s cpu_threads=%s",
             settings.voicevox_acceleration_mode,
-            VOICEVOX_CPU_NUM_THREADS,
+            settings.cpu_num_threads or "auto",
         )
         self._synthesizer = Synthesizer(
             runtime,
             open_jtalk,
             acceleration_mode=settings.voicevox_acceleration_mode,
-            cpu_num_threads=VOICEVOX_CPU_NUM_THREADS,
+            cpu_num_threads=settings.cpu_num_threads,
         )
 
         indexed_model_paths: list[Path] = []

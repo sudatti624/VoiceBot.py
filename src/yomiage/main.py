@@ -28,12 +28,13 @@ def main() -> None:
         settings = Settings.from_env()
         LOGGER.info(
             "Configuration loaded: db=%s max_tokens=%s speaker_id=%s speed=%s "
-            "acceleration=%s cache_size=%s ffmpeg=%s",
+            "acceleration=%s cpu_threads=%s cache_size=%s ffmpeg=%s",
             settings.database_path,
             settings.max_tokens,
             settings.speaker_id,
             settings.speed,
             settings.voicevox_acceleration_mode,
+            settings.cpu_num_threads,
             settings.cache_size,
             settings.ffmpeg_path,
         )

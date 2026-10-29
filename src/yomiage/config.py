@@ -17,6 +17,7 @@ MAX_TOKENS_UPPER_BOUND = 100_000
 VOICEVOX_CACHE_SIZE_UPPER_BOUND = 100_000
 VOICEVOX_SPEED_UPPER_BOUND = 10.0
 VOICEVOX_SPEAKER_ID_UPPER_BOUND = 100_000
+VOICEVOX_CPU_NUM_THREADS_UPPER_BOUND = 1024
 BOT_ID_UPPER_BOUND = 2**63 - 1
 VoicevoxAccelerationMode = Literal["AUTO", "CPU", "GPU"]
 VOICEVOX_ACCELERATION_MODES: frozenset[VoicevoxAccelerationMode] = frozenset(
@@ -133,6 +134,8 @@ class Settings:
     stream_segment_seconds: float = 0.3
     stream_buffer_seconds: float = 0.5
     performance_log: bool = False
+    # Passed to voicevox_core's Synthesizer; 0 lets CORE pick based on the machine.
+    cpu_num_threads: int = 4
 
     @classmethod
     def from_env(cls) -> Settings:
@@ -177,6 +180,14 @@ class Settings:
             cache_size,
             minimum=0,
             maximum=VOICEVOX_CACHE_SIZE_UPPER_BOUND,
+        )
+
+        cpu_num_threads = _get_int("VOICEVOX_CPU_NUM_THREADS", 4)
+        _require_range(
+            "VOICEVOX_CPU_NUM_THREADS",
+            cpu_num_threads,
+            minimum=0,
+            maximum=VOICEVOX_CPU_NUM_THREADS_UPPER_BOUND,
         )
 
         stream_segment_seconds = _get_float("VOICEVOX_STREAM_SEGMENT_SECONDS", 0.3)
@@ -225,4 +236,5 @@ class Settings:
             stream_segment_seconds=stream_segment_seconds,
             stream_buffer_seconds=stream_buffer_seconds,
             performance_log=_get_bool("VOICEVOX_PERFORMANCE_LOG", default=False),
+            cpu_num_threads=cpu_num_threads,
         )

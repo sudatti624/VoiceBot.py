@@ -33,6 +33,7 @@ def _isolated_env(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
         "VOICEVOX_STREAM_SEGMENT_SECONDS",
         "VOICEVOX_STREAM_BUFFER_SECONDS",
         "VOICEVOX_PERFORMANCE_LOG",
+        "VOICEVOX_CPU_NUM_THREADS",
     ):
         monkeypatch.delenv(name, raising=False)
     monkeypatch.setenv("DISCORD_BOT_TOKEN", "test-token")
@@ -288,6 +289,27 @@ def test_performance_log_accepts_boolean_words(
 ) -> None:
     monkeypatch.setenv("VOICEVOX_PERFORMANCE_LOG", raw)
     assert Settings.from_env().performance_log is expected
+
+
+def test_cpu_num_threads_defaults_to_four() -> None:
+    assert Settings.from_env().cpu_num_threads == 4
+
+
+@pytest.mark.parametrize(("raw", "expected"), [("0", 0), ("12", 12)])
+def test_cpu_num_threads_from_env(
+    monkeypatch: pytest.MonkeyPatch,
+    raw: str,
+    expected: int,
+) -> None:
+    monkeypatch.setenv("VOICEVOX_CPU_NUM_THREADS", raw)
+    assert Settings.from_env().cpu_num_threads == expected
+
+
+@pytest.mark.parametrize("raw", ["-1", "1025", "many"])
+def test_invalid_cpu_num_threads_raises(monkeypatch: pytest.MonkeyPatch, raw: str) -> None:
+    monkeypatch.setenv("VOICEVOX_CPU_NUM_THREADS", raw)
+    with pytest.raises(ConfigError, match="VOICEVOX_CPU_NUM_THREADS"):
+        Settings.from_env()
 
 
 def test_invalid_performance_log_raises(monkeypatch: pytest.MonkeyPatch) -> None:
