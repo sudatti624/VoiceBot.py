@@ -176,6 +176,49 @@ def test_rejoin_move_keeps_self_deaf(
     asyncio.run(scenario())
 
 
+class FailingVoiceChannel(FakeVoiceChannel):
+    async def connect(self, **kwargs: object) -> FakeVoiceClient:
+        self.connect_kwargs = kwargs
+        raise TimeoutError
+
+
+def test_join_failure_replies_instead_of_raising(tmp_path: Path) -> None:
+    async def scenario() -> None:
+        bot = make_bot(tmp_path)
+        channel = FailingVoiceChannel(10)
+        guild = FakeGuild(1)
+        member = FakeMember(100, channel)
+
+        try:
+            reply = await bot._join_member_voice(
+                cast("discord.Guild", guild),
+                cast("discord.Member", member),
+                text_channel_id=20,
+            )
+
+            assert reply.startswith("<#10> に接続できませんでした")
+            assert bot.session_manager.get(guild.id) is None
+        finally:
+            await bot.close()
+
+    asyncio.run(scenario())
+
+
+def test_bot_never_pings_everyone_roles_or_users(tmp_path: Path) -> None:
+    async def scenario() -> None:
+        bot = make_bot(tmp_path)
+        try:
+            allowed = bot.allowed_mentions
+            assert allowed is not None
+            assert allowed.everyone is False
+            assert allowed.roles is False
+            assert allowed.users is False
+        finally:
+            await bot.close()
+
+    asyncio.run(scenario())
+
+
 def test_on_message_reads_other_bot_messages(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

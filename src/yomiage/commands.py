@@ -5,7 +5,7 @@ from __future__ import annotations
 import contextlib
 import logging
 import re
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 from typing import TYPE_CHECKING
 
 import discord
@@ -21,8 +21,13 @@ from yomiage.voice_catalog import (
 MAX_DICT_ENTRIES = 27
 MAX_DICT_WORD_LENGTH = 120
 MAX_DICT_READING_LENGTH = 80
+DISCORD_MESSAGE_LIMIT = 2000
 SPEAKER_ID_INPUT_RANGE = app_commands.Range[int, 0, 10_000]
 NESTED_QUANTIFIER_PATTERN = re.compile(r"\((?:[^()\\]|\\.)*[*+](?:[^()\\]|\\.)*\)[*+{]")
+GUILD_ONLY_MESSAGE = "このコマンドはサーバー内でのみ使用できます"
+NOT_CONNECTED_MESSAGE = "ボイスチャンネルに接続していません"
+# Look-alike for "`" so user text cannot close an inline code span early.
+BACKTICK_SUBSTITUTE = "ˋ"
 
 LOGGER = logging.getLogger(__name__)
 VOICE_PAGINATOR_TIMEOUT_SECONDS = 60.0
@@ -46,6 +51,32 @@ def _validate_dict_entry(word: str, reading: str, regex: bool) -> str | None:
         if NESTED_QUANTIFIER_PATTERN.search(word):
             return "処理が極端に重くなる可能性がある正規表現は登録できません"
     return None
+
+
+def _inline_code(text: str) -> str:
+    """Render user-supplied text as inline code without letting it break out of the span."""
+    return f"`{text.replace('`', BACKTICK_SUBSTITUTE)}`"
+
+
+def _chunk_lines(lines: Sequence[str], limit: int = DISCORD_MESSAGE_LIMIT) -> list[str]:
+    """Join lines into messages that each fit within Discord's length limit."""
+    chunks: list[str] = []
+    current = ""
+    for line in lines:
+        candidate = f"{current}\n{line}" if current else line
+        if len(candidate) <= limit:
+            current = candidate
+            continue
+        if current:
+            chunks.append(current)
+        current = line[:limit]
+    if current:
+        chunks.append(current)
+    return chunks
+
+
+def _speaker_unavailable_message(speaker_id: int) -> str:
+    return f"話者ID `{speaker_id}` は現在ロードされているVOICEVOXモデルにありません"
 
 
 class _EmbedPaginator(discord.ui.View):
@@ -100,41 +131,43 @@ class _EmbedPaginator(discord.ui.View):
         self.page_label.label = f"{self._page_index + 1}/{len(self._embeds)}"
 
 
-def _build_voice_catalog_embeds() -> list[discord.Embed]:
-    pages = voice_catalog_pages()
+def _build_paged_embeds[EntryT](
+    title: str,
+    pages: Sequence[Sequence[EntryT]],
+    field_name: Callable[[EntryT], str],
+    field_value: Callable[[EntryT], str],
+    description: str | None = None,
+) -> list[discord.Embed]:
     embeds: list[discord.Embed] = []
     for page_index, entries in enumerate(pages, start=1):
         embed = discord.Embed(
-            title=f"VOICEVOX 話者ID一覧 ({page_index}/{len(pages)})",
+            title=f"{title} ({page_index}/{len(pages)})",
+            description=description,
             color=discord.Color.blurple(),
         )
         for entry in entries:
-            embed.add_field(
-                name=entry.character,
-                value=format_voice_styles(entry),
-                inline=False,
-            )
+            embed.add_field(name=field_name(entry), value=field_value(entry), inline=False)
         embeds.append(embed)
     return embeds
+
+
+def _build_voice_catalog_embeds() -> list[discord.Embed]:
+    return _build_paged_embeds(
+        "VOICEVOX 話者ID一覧",
+        voice_catalog_pages(),
+        lambda entry: entry.character,
+        format_voice_styles,
+    )
 
 
 def _build_voice_license_embeds() -> list[discord.Embed]:
-    pages = voice_license_pages()
-    embeds: list[discord.Embed] = []
-    for page_index, entries in enumerate(pages, start=1):
-        embed = discord.Embed(
-            title=f"VOICEVOX クレジット表記 ({page_index}/{len(pages)})",
-            description="詳細な条件は各キャラクターの利用規約を確認してください。",
-            color=discord.Color.blurple(),
-        )
-        for entry in entries:
-            embed.add_field(
-                name=entry.character,
-                value=format_voice_license(entry),
-                inline=False,
-            )
-        embeds.append(embed)
-    return embeds
+    return _build_paged_embeds(
+        "VOICEVOX クレジット表記",
+        voice_license_pages(),
+        lambda entry: entry.character,
+        format_voice_license,
+        description="詳細な条件は各キャラクターの利用規約を確認してください。",
+    )
 
 
 def setup_commands(bot: YomiageBot) -> None:
@@ -145,9 +178,7 @@ def setup_commands(bot: YomiageBot) -> None:
     async def join(interaction: discord.Interaction) -> None:
         assert interaction.guild is not None  # noqa: S101 - guaranteed by guild_only()
         if not isinstance(interaction.user, discord.Member):
-            await interaction.response.send_message(
-                "このコマンドはサーバー内でのみ使用できます",
-            )
+            await interaction.response.send_message(GUILD_ONLY_MESSAGE)
             return
 
         voice = interaction.user.voice
@@ -162,12 +193,14 @@ def setup_commands(bot: YomiageBot) -> None:
             )
             return
 
+        # Connecting can exceed Discord's 3 second interaction response deadline.
+        await interaction.response.defer(thinking=True)
         reply = await bot._join_member_voice(  # noqa: SLF001 - commands module is bot's collaborator
             interaction.guild,
             interaction.user,
             interaction.channel_id,
         )
-        await interaction.response.send_message(reply)
+        await interaction.followup.send(reply)
 
     @tree.command(name="leave", description="ボイスチャンネルから切断します")
     @app_commands.guild_only()
@@ -175,29 +208,30 @@ def setup_commands(bot: YomiageBot) -> None:
         assert interaction.guild is not None  # noqa: S101
         voice_client = interaction.guild.voice_client
         if not isinstance(voice_client, discord.VoiceClient):
-            await interaction.response.send_message("ボイスチャンネルに接続していません")
+            await interaction.response.send_message(NOT_CONNECTED_MESSAGE)
             return
 
+        # Session teardown may wait for an in-flight synthesis thread to stop.
+        await interaction.response.defer(thinking=True)
         await bot._disconnect_guild(interaction.guild, voice_client)  # noqa: SLF001
-        await interaction.response.send_message("ボイスチャンネルから切断しました")
+        await interaction.followup.send("ボイスチャンネルから切断しました")
+
+    async def skip_current(interaction: discord.Interaction) -> None:
+        assert interaction.guild is not None  # noqa: S101
+        if not bot._skip_guild(interaction.guild):  # noqa: SLF001
+            await interaction.response.send_message(NOT_CONNECTED_MESSAGE)
+            return
+        await interaction.response.send_message("現在の読み上げをスキップしました")
 
     @tree.command(name="skip", description="現在の読み上げをスキップします")
     @app_commands.guild_only()
     async def skip(interaction: discord.Interaction) -> None:
-        assert interaction.guild is not None  # noqa: S101
-        if not bot._skip_guild(interaction.guild):  # noqa: SLF001
-            await interaction.response.send_message("ボイスチャンネルに接続していません")
-            return
-        await interaction.response.send_message("現在の読み上げをスキップしました")
+        await skip_current(interaction)
 
     @tree.command(name="s", description="現在の読み上げをスキップします")
     @app_commands.guild_only()
     async def s(interaction: discord.Interaction) -> None:
-        assert interaction.guild is not None  # noqa: S101
-        if not bot._skip_guild(interaction.guild):  # noqa: SLF001
-            await interaction.response.send_message("ボイスチャンネルに接続していません")
-            return
-        await interaction.response.send_message("現在の読み上げをスキップしました")
+        await skip_current(interaction)
 
     dict_group = app_commands.Group(name="dict", description="サーバー辞書の管理")
 
@@ -232,7 +266,10 @@ def setup_commands(bot: YomiageBot) -> None:
             regex,
         )
         await interaction.response.send_message(
-            f"単語を辞書に追加しました\n単語: `{word}`\n読み: `{reading}`\n正規表現: `{regex}`",
+            "単語を辞書に追加しました\n"
+            f"単語: {_inline_code(word)}\n"
+            f"読み: {_inline_code(reading)}\n"
+            f"正規表現: `{regex}`",
         )
 
     @dict_group.command(name="remove", description="単語を辞書から削除")
@@ -247,7 +284,7 @@ def setup_commands(bot: YomiageBot) -> None:
         )
         if deleted:
             await interaction.response.send_message(
-                f"単語を辞書から削除しました\n削除した単語: `{word}`",
+                f"単語を辞書から削除しました\n削除した単語: {_inline_code(word)}",
             )
         else:
             await interaction.response.send_message("その単語は登録されていません")
@@ -262,10 +299,14 @@ def setup_commands(bot: YomiageBot) -> None:
             return
 
         lines = [
-            f"{index}. `{word}` -> `{reading}` (regex: `{regex}`)"
-            for index, (word, reading, regex) in enumerate(entries, start=1)
+            f"{index}. {_inline_code(word)} -> {_inline_code(reading)} (regex: `{regex}`)"
+            for index, (word, reading, regex) in enumerate(entries[:MAX_DICT_ENTRIES], start=1)
         ]
-        await interaction.response.send_message("\n".join(lines[:MAX_DICT_ENTRIES]))
+        # A full dictionary can exceed one message, so send the rest as follow-ups.
+        first, *rest = _chunk_lines(lines)
+        await interaction.response.send_message(first)
+        for chunk in rest:
+            await interaction.followup.send(chunk)
 
     tree.add_command(dict_group)
 
@@ -379,9 +420,7 @@ def setup_commands(bot: YomiageBot) -> None:
     ) -> None:
         assert interaction.guild is not None  # noqa: S101
         if not bot.synthesizer.is_style_available(speaker_id):
-            await interaction.response.send_message(
-                f"話者ID `{speaker_id}` は現在ロードされているVOICEVOXモデルにありません",
-            )
+            await interaction.response.send_message(_speaker_unavailable_message(speaker_id))
             return
 
         bot.database.set_default_speaker_id(interaction.guild.id, bot.settings.bot_id, speaker_id)
@@ -398,15 +437,11 @@ def setup_commands(bot: YomiageBot) -> None:
     ) -> None:
         assert interaction.guild is not None  # noqa: S101
         if not isinstance(interaction.user, discord.Member):
-            await interaction.response.send_message(
-                "このコマンドはサーバー内でのみ使用できます",
-            )
+            await interaction.response.send_message(GUILD_ONLY_MESSAGE)
             return
 
         if not bot.synthesizer.is_style_available(speaker_id):
-            await interaction.response.send_message(
-                f"話者ID `{speaker_id}` は現在ロードされているVOICEVOXモデルにありません",
-            )
+            await interaction.response.send_message(_speaker_unavailable_message(speaker_id))
             return
 
         bot.database.set_user_speaker_id(
@@ -429,9 +464,7 @@ def setup_commands(bot: YomiageBot) -> None:
     ) -> None:
         assert interaction.guild is not None  # noqa: S101
         if not isinstance(interaction.user, discord.Member):
-            await interaction.response.send_message(
-                "このコマンドはサーバー内でのみ使用できます",
-            )
+            await interaction.response.send_message(GUILD_ONLY_MESSAGE)
             return
 
         bot.database.delete_user_speaker_id(

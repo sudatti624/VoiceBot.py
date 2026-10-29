@@ -20,6 +20,7 @@ SqliteCursor = sqlite3.Cursor
 DEFAULT_MENTION_READ_MODE: MentionReadMode = "name"
 DEFAULT_READ_AUTHOR_NAME = True
 DEFAULT_SERVER_CHAT_ENABLED = False
+LINK_OMITTED_READING = "りんくしょうりゃく"
 
 
 @dataclass(frozen=True)
@@ -33,7 +34,7 @@ class GuildSettings:
 DEFAULT_GLOBAL_DICT: tuple[DictEntry, ...] = (
     (r"(\d{1,2}):(\d{2})", r"(1)じ(2)ふん", True),
     (r"\(.*?\)", "", True),
-    (r"(https?://\S+)(\s|$)", "りんくしょうりゃく", True),
+    (r"(https?://\S+)(\s|$)", LINK_OMITTED_READING, True),
     (r"(?s)`{1,3}[^`\n]+`{1,3}", "こーどしょうりゃく", True),
 )
 
@@ -281,6 +282,24 @@ class Database:
             ),
         )
 
+    def _update_guild_settings(
+        self,
+        server_id: int,
+        bot_id: int,
+        fallback_speaker_id: int,
+        update_sql: str,
+        value: object,
+    ) -> None:
+        """Run a fixed ``UPDATE guild_settings SET <column> = ?`` statement for one guild.
+
+        ``update_sql`` is always a literal from this class; only ``value`` and the
+        IDs are user-controlled, and they are bound as parameters.
+        """
+        self._ensure_guild_settings_row(server_id, bot_id, fallback_speaker_id)
+        self._connection.execute(update_sql, (value, server_id, bot_id))
+        self._connection.commit()
+        self._guild_settings_cache.pop((server_id, bot_id), None)
+
     def set_mention_read_mode(
         self,
         server_id: int,
@@ -288,13 +307,13 @@ class Database:
         mode: MentionReadMode,
         fallback_speaker_id: int,
     ) -> None:
-        self._ensure_guild_settings_row(server_id, bot_id, fallback_speaker_id)
-        self._connection.execute(
+        self._update_guild_settings(
+            server_id,
+            bot_id,
+            fallback_speaker_id,
             "UPDATE guild_settings SET mention_read_mode = ? WHERE server_id = ? AND bot_id = ?",
-            (mode, server_id, bot_id),
+            mode,
         )
-        self._connection.commit()
-        self._guild_settings_cache.pop((server_id, bot_id), None)
 
     def set_read_author_name(
         self,
@@ -303,13 +322,13 @@ class Database:
         enabled: bool,
         fallback_speaker_id: int,
     ) -> None:
-        self._ensure_guild_settings_row(server_id, bot_id, fallback_speaker_id)
-        self._connection.execute(
+        self._update_guild_settings(
+            server_id,
+            bot_id,
+            fallback_speaker_id,
             "UPDATE guild_settings SET read_author_name = ? WHERE server_id = ? AND bot_id = ?",
-            (int(enabled), server_id, bot_id),
+            int(enabled),
         )
-        self._connection.commit()
-        self._guild_settings_cache.pop((server_id, bot_id), None)
 
     def set_server_chat_enabled(
         self,
@@ -318,22 +337,22 @@ class Database:
         enabled: bool,
         fallback_speaker_id: int,
     ) -> None:
-        self._ensure_guild_settings_row(server_id, bot_id, fallback_speaker_id)
-        self._connection.execute(
+        self._update_guild_settings(
+            server_id,
+            bot_id,
+            fallback_speaker_id,
             "UPDATE guild_settings SET server_chat_enabled = ? WHERE server_id = ? AND bot_id = ?",
-            (int(enabled), server_id, bot_id),
+            int(enabled),
         )
-        self._connection.commit()
-        self._guild_settings_cache.pop((server_id, bot_id), None)
 
     def set_default_speaker_id(self, server_id: int, bot_id: int, speaker_id: int) -> None:
-        self._ensure_guild_settings_row(server_id, bot_id, speaker_id)
-        self._connection.execute(
+        self._update_guild_settings(
+            server_id,
+            bot_id,
+            speaker_id,
             "UPDATE guild_settings SET default_speaker_id = ? WHERE server_id = ? AND bot_id = ?",
-            (speaker_id, server_id, bot_id),
+            speaker_id,
         )
-        self._connection.commit()
-        self._guild_settings_cache.pop((server_id, bot_id), None)
 
     def get_user_speaker_id(self, server_id: int, bot_id: int, user_id: int) -> int | None:
         row = self._connection.execute(

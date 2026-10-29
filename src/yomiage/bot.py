@@ -9,7 +9,7 @@ from discord import app_commands
 
 from yomiage.commands import setup_commands
 from yomiage.config import Settings
-from yomiage.database import Database
+from yomiage.database import LINK_OMITTED_READING, Database
 from yomiage.speech import GuildSession, SessionManager, SpeechItem
 from yomiage.translator import Translator
 from yomiage.voicevox import SynthesizerLike, VoicevoxSynthesizer
@@ -23,6 +23,14 @@ DISCORD_CHANNEL_URL_PATTERN = re.compile(
     r"https?://(?:canary\.|ptb\.)?discord(?:app)?\.com/channels/(\d+|@me)/(\d+)(?:/\d+)?",
 )
 SERVER_CHAT_PREFIX_PATTERN = re.compile(r"^\[[^\]]+\]<[^>]+>\s*")
+# Replies echo user input (dictionary words, readings), so never let them ping
+# @everyone/@here, roles, or users. Pinging the author of a replied-to message is fine.
+SAFE_ALLOWED_MENTIONS = discord.AllowedMentions(
+    everyone=False,
+    users=False,
+    roles=False,
+    replied_user=True,
+)
 
 
 class YomiageBot(discord.Client):
@@ -36,7 +44,7 @@ class YomiageBot(discord.Client):
         intents = discord.Intents.default()
         intents.message_content = True
         intents.voice_states = True
-        super().__init__(intents=intents)
+        super().__init__(intents=intents, allowed_mentions=SAFE_ALLOWED_MENTIONS)
         self.settings = settings
         self.database = database
         self.translator = translator
@@ -172,13 +180,27 @@ class YomiageBot(discord.Client):
             return "ボイスチャンネルに参加してから呼んでください。"
 
         voice_client = guild.voice_client
-        if isinstance(voice_client, discord.VoiceClient):
-            await voice_client.move_to(voice.channel)
-            await guild.change_voice_state(channel=voice.channel, self_deaf=True)
-            action = "移動しました"
-        else:
-            voice_client = cast(discord.VoiceClient, await voice.channel.connect(self_deaf=True))
-            action = "接続しました"
+        try:
+            if isinstance(voice_client, discord.VoiceClient):
+                await voice_client.move_to(voice.channel)
+                await guild.change_voice_state(channel=voice.channel, self_deaf=True)
+                action = "移動しました"
+            else:
+                voice_client = cast(
+                    discord.VoiceClient,
+                    await voice.channel.connect(self_deaf=True),
+                )
+                action = "接続しました"
+        except (TimeoutError, discord.DiscordException):
+            LOGGER.exception(
+                "Failed to join voice channel guild=%s channel=%s",
+                guild.id,
+                voice.channel.id,
+            )
+            return (
+                f"{voice.channel.mention} に接続できませんでした。"
+                "権限を確認して再度お試しください。"
+            )
 
         await self.session_manager.open(guild.id, voice.channel.id, text_channel_id)
         LOGGER.info("Joined guild=%s channel=%s", guild.id, voice_client.channel)
@@ -282,10 +304,9 @@ class YomiageBot(discord.Client):
         content: str,
         mention_read_mode: str,
     ) -> str:
-        replacement = "りんくしょうりゃく"
         if mention_read_mode == "omit":
-            content = MENTION_PATTERN.sub(replacement, content)
-            return DISCORD_CHANNEL_URL_PATTERN.sub(replacement, content)
+            content = MENTION_PATTERN.sub(LINK_OMITTED_READING, content)
+            return DISCORD_CHANNEL_URL_PATTERN.sub(LINK_OMITTED_READING, content)
 
         content = MENTION_PATTERN.sub(lambda match: self._mention_name(guild, match), content)
         return DISCORD_CHANNEL_URL_PATTERN.sub(
