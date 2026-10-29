@@ -2,14 +2,19 @@
 
 from __future__ import annotations
 
+import subprocess
+import sys
 import wave
 from collections import OrderedDict
 from dataclasses import replace
 from io import BytesIO
 from pathlib import Path
 from threading import Lock
+from types import SimpleNamespace
+from typing import cast
 
 import pytest
+from voicevox_core.blocking import Synthesizer
 
 from yomiage.config import Settings
 from yomiage.voicevox import (
@@ -98,6 +103,7 @@ def _synthesizer(
     synth._streaming_style_id_set = streaming
     synth._loaded_model_paths = set()
     synth._style_ids = frozenset({3, 8})
+    synth._synthesizer = cast("Synthesizer", SimpleNamespace(streaming_synthesis=lambda: None))
     return synth
 
 
@@ -106,7 +112,38 @@ def _stream(
     native: FakeNativeStream,
     text: str = "テスト",
 ) -> VoicevoxPcmStream:
-    return VoicevoxPcmStream(synth, native, HEADER, synth._cache_key(text, 3))  # pyright: ignore[reportArgumentType]
+    return VoicevoxPcmStream(synth, native, HEADER, synth._cache_key(text, 3))
+
+
+def test_import_without_optional_native_stream_export() -> None:
+    code = """
+import voicevox_core.blocking as blocking
+if hasattr(blocking, 'SynthesisStream'):
+    del blocking.SynthesisStream
+import yomiage.main
+"""
+    result = subprocess.run(  # noqa: S603 - fixed interpreter and test code
+        [sys.executable, "-c", code],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert result.returncode == 0, result.stderr
+
+
+@pytest.mark.parametrize("mode", ["normal", "auto", "streaming"])
+def test_core_without_streaming_api(tmp_path: Path, mode: str) -> None:
+    synth = _synthesizer(_settings(tmp_path, synthesis_mode=mode))
+    synth._synthesizer = cast("Synthesizer", object())
+    assert not synth.supports_streaming(3)
+    assert synth.streaming_style_ids() == frozenset()
+    if mode == "streaming":
+        with pytest.raises(VoicevoxConfigError, match="CORE"):
+            validate_synthesis_mode(synth.settings, synth)
+    else:
+        validate_synthesis_mode(synth.settings, synth)
+    with pytest.raises(StreamingNotSupportedError, match="CORE"):
+        synth.open_stream("test", 3)
 
 
 def test_parse_wav_header_reads_streaming_format() -> None:

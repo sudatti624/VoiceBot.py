@@ -15,7 +15,6 @@ from typing import Protocol, Self, runtime_checkable
 from voicevox_core.blocking import (
     Onnxruntime,
     OpenJtalk,
-    SynthesisStream,
     Synthesizer,
     VoiceModelFile,
 )
@@ -104,6 +103,14 @@ class PcmStream(Protocol):
     ) -> None: ...
 
 
+class NativeSynthesisStream(Protocol):
+    """Native stream interface, without importing an optional CORE export."""
+
+    def __next__(self) -> bytes: ...
+
+    def clear(self) -> None: ...
+
+
 @runtime_checkable
 class StreamingSynthesizerLike(SynthesizerLike, Protocol):
     """Optional extension used by the ``streaming``/``auto`` synthesis modes."""
@@ -141,12 +148,12 @@ class VoicevoxPcmStream:
     def __init__(
         self,
         owner: VoicevoxSynthesizer,
-        stream: SynthesisStream,
+        stream: NativeSynthesisStream,
         header: bytes,
         key: CacheKey,
     ) -> None:
         self._owner = owner
-        self._stream: SynthesisStream | None = stream
+        self._stream: NativeSynthesisStream | None = stream
         self._header = header
         self._key = key
         self._format = parse_wav_header(header)
@@ -302,9 +309,11 @@ class VoicevoxSynthesizer:
             return self._get_cached_locked(key)
 
     def supports_streaming(self, style_id: int) -> bool:
-        return style_id in self._streaming_style_id_set
+        return style_id in self.streaming_style_ids()
 
     def streaming_style_ids(self) -> frozenset[int]:
+        if not callable(getattr(self._synthesizer, "streaming_synthesis", None)):
+            return frozenset()
         return self._streaming_style_id_set
 
     def open_stream(self, text: str, speaker_id: int | None = None) -> VoicevoxPcmStream:
@@ -312,7 +321,9 @@ class VoicevoxSynthesizer:
         style_id = self._resolve_style(speaker_id)
         if not self.supports_streaming(style_id):
             raise StreamingNotSupportedError(
-                f"VOICEVOX style ID {style_id} is not a {STREAMING_STYLE_TYPE!r} style",
+                f"Streaming synthesis is unavailable for VOICEVOX style ID {style_id}. "
+                f"Install VOICEVOX CORE 0.17.1 or later and {STREAMING_STYLE_TYPE!r} VVMs, "
+                "or use VOICEVOX_SYNTHESIS_MODE=auto / normal.",
             )
         key = self._cache_key(text, style_id)
         with self._lock:
@@ -427,12 +438,15 @@ def validate_synthesis_mode(settings: Settings, synthesizer: SynthesizerLike) ->
         raise VoicevoxConfigError(
             f"VOICEVOX_SYNTHESIS_MODE=streaming requires VOICEVOX_SPEAKER_ID={settings.speaker_id} "
             f"to be a {STREAMING_STYLE_TYPE!r} style from a new-format VVM "
-            "(vvm_format_version=2). Install streaming-capable VVMs, choose another speaker, "
+            "(vvm_format_version=2) and a CORE with streaming_synthesis support. "
+            "Install VOICEVOX CORE 0.17.1 or later and streaming-capable VVMs, "
+            "choose another speaker, "
             "or use VOICEVOX_SYNTHESIS_MODE=auto / normal.",
         )
     if not streaming_ids:
         LOGGER.warning(
-            "VOICEVOX_SYNTHESIS_MODE=auto but no loaded VVM has %r styles; "
+            "VOICEVOX_SYNTHESIS_MODE=auto but CORE streaming_synthesis support "
+            "or loaded %r VVM styles are unavailable; "
             "every message will use normal synthesis",
             STREAMING_STYLE_TYPE,
         )
