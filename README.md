@@ -306,6 +306,12 @@ unzip -p ./voicevox_core/models/vvms/0.vvm manifest.json | jq .vvm_format_versio
 
 ## 音声合成モード
 
+> [!WARNING]
+> **`streaming` / `auto` は実験的な機能です。環境によっては音声が途切れ途切れになります。**
+> CPUに余裕があっても起こることがあります（原因は[トラブルシューティング](#トラブルシューティング)を参照）。
+> 安定して読み上げたい場合は `normal`（デフォルト）を使ってください。
+> `normal` では話し始めるまで少し時間がかかりますが、音声は途切れません。
+
 `.env` の `VOICEVOX_SYNTHESIS_MODE` で音声合成の方式を選びます。値の大文字・小文字は区別しません。
 設定は全サーバー共通です。**変更はBotの再起動後に反映されます。**
 Discordコマンドでは変更できず、SQLiteにも保存しません。
@@ -398,12 +404,17 @@ INFO yomiage.perf: speech_perf guild=123 mode=auto path=streaming cache_hit=fals
     起動時の警告ログと、`Streaming-capable VOICEVOX style IDs` を確認してください。
   - `path=streaming->normal` の場合: ストリーミングに失敗しています。直前の警告ログを確認してください。
   - 3回続けて失敗したスタイルは、再起動まで通常合成に固定されます。
-- **音が途切れる、または `underruns` が増える**: 合成が再生に追いついていません。
-  - `VOICEVOX_STREAM_BUFFER_SECONDS` を増やしてください。
-  - `VOICEVOX_ACCELERATION_MODE=GPU` の利用を検討してください。
-  - VOICEVOX COREのPython API（非asyncio版）は、合成中にPythonのGILを保持します
+- **音が途切れ途切れになる**: 原因は2つ考えられます。`VOICEVOX_PERFORMANCE_LOG=true` にして、
+  ログの `underruns` で切り分けてください。
+  - **`underruns` が1以上**: 合成が再生に追いついていません。
+    `VOICEVOX_STREAM_BUFFER_SECONDS` を増やす（例: `1.5`）、`VOICEVOX_STREAM_SEGMENT_SECONDS` を少し大きくする
+    （例: `0.5`）、`VOICEVOX_CPU_NUM_THREADS` を増やす、`VOICEVOX_ACCELERATION_MODE=GPU` を使う、のいずれかを試してください。
+  - **`underruns=0` なのに途切れる**: VOICEVOX COREのPython API（非asyncio版）は、合成中にPythonのGILを保持します
     （[voicevox_core#1476](https://github.com/VOICEVOX/voicevox_core/issues/1476)）。
-    そのため、複数サーバーで同時に読み上げると再生スレッドの動作が遅れることがあります。
+    ストリーミングでは合成と再生を同時に行うため、合成中にDiscordへの音声送信（20msごと）が遅れて途切れます。
+    この場合はバッファ設定を変えても改善しないため、`normal` を使ってください。
+    `VOICEVOX_CPU_NUM_THREADS` を増やすと1回の合成が短くなるため、軽減する場合があります。
+    複数サーバーで同時に読み上げると起きやすくなります。
 - **`/skip` の後に次の読み上げが少し遅れる**: 停止の時点で合成中だったセグメント（約0.3秒分）は、
   合成が終わるまで待ちます。通常合成の場合は、合成中の音声全体を待ちます。
 
@@ -526,6 +537,8 @@ uv run pytest
 - `VOICEVOX_MODEL_PATH`: `.vvm` モデルファイル、または `.vvm` を含むディレクトリ
 - `VOICEVOX_MODEL_EXCLUDE`: 読み込まない `.vvm`。例: `4.vvm`、複数なら `4.vvm,9.vvm`
 - `VOICEVOX_ACCELERATION_MODE`: `CPU`, `AUTO`, `GPU` のいずれか。デフォルトは `CPU`
+- `VOICEVOX_CPU_NUM_THREADS`: 合成に使うCPUスレッド数（0〜1024）。デフォルトは `4`。
+  `0` にするとVOICEVOX COREが環境に合わせて決めます。コア数の多いサーバーでは増やすと合成が速くなります
 - `VOICEVOX_CACHE_SIZE`: 音声合成キャッシュ数（0〜100000、`0` で無効）。デフォルトは `100`
 - `FFMPEG_PATH`: ffmpegコマンド、または実行ファイルの絶対パス。デフォルトは `ffmpeg`。
   systemdなどでPATHが通らない場合は絶対パスを指定してください
